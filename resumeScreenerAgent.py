@@ -19,7 +19,7 @@ import logging
 # Document processing libraries
 import PyPDF2
 import docx2txt
-from pdfplumber import PDF
+import pdfplumber
 import fitz  # PyMuPDF for better PDF parsing
 
 # NLP and ML libraries
@@ -28,30 +28,62 @@ from spacy.matcher import Matcher
 import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.corpus import stopwords
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 
 # CrewAI imports
 from crewai import Agent, Task, Crew, Process
 from crewai.tools import BaseTool
-#from langchain.llms import OpenAI #old
-from langchain_openai import OpenAI #new
+from langchain_openai import OpenAI, ChatOpenAI
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+except Exception:  # Optional dependency; fallback imported conditionally
+    ChatGoogleGenerativeAI = None
+
+# Minimal direct Gemini adapter (no LangChain dependency required)
+class _SimpleGeminiClient:
+    """Lightweight adapter exposing .invoke(messages) -> object with .content for Gemini."""
+    def __init__(self, api_key: str, model: str = "gemini-1.5-pro", temperature: float = 0.2):
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        self._model_name = model
+        self._temperature = temperature
+        self._genai = genai
+        self._model = genai.GenerativeModel(model)
+    
+    class _Resp:
+        def __init__(self, text: str):
+            self.content = text
+    
+    def invoke(self, messages: List):
+        # Combine messages into a single prompt string
+        parts = []
+        for m in messages:
+            role = getattr(m, 'type', None) or m.__class__.__name__
+            content = getattr(m, 'content', str(m))
+            parts.append(f"{role.upper()}:\n{content}\n")
+        prompt = "\n".join(parts)
+        try:
+            res = self._model.generate_content(prompt, generation_config={"temperature": self._temperature})
+            text = getattr(res, 'text', None)
+            if not text and hasattr(res, 'candidates') and res.candidates:
+                text = res.candidates[0].content.parts[0].text
+            return _SimpleGeminiClient._Resp(text or "")
+        except Exception as e:
+            raise e
 from langchain.tools import tool
+from langchain.prompts import PromptTemplate
+from langchain.schema import HumanMessage, SystemMessage
 
 # Download required NLTK data
 try:
     nltk.data.find('tokenizers/punkt')
     nltk.data.find('corpora/stopwords')
-    nltk.data.find('tokenizers/punkt_tab') #added
 except LookupError:
     nltk.download('punkt')
     nltk.download('stopwords')
-    nltk.download('punkt_tab') #added
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
 
 
 class ResumeParserTool(BaseTool):
@@ -117,7 +149,7 @@ class ResumeParserTool(BaseTool):
         
         # Method 2: pdfplumber - good for tables and structured data
         try:
-            with PDF.open(file_path) as pdf:
+            with pdfplumber.open(str(file_path)) as pdf:
                 for page in pdf.pages:
                     text += page.extract_text() or ""
             if text.strip():
@@ -430,391 +462,624 @@ class ResumeParserTool(BaseTool):
         
         return achievements
 
-class SkillMatchingTool(BaseTool):
-    name: str = "Skill Matching"
-    description: str = "Evaluates and scores resume content based on various factors"
-    
-    def _run(self, parsed_resume: Dict, evaluation_criteria: Dict = None) -> Dict:
-        """Evaluate parsed resume based on comprehensive criteria"""
-        
-        if evaluation_criteria is None:
-            evaluation_criteria = self._get_default_criteria()
-        
-        evaluation = {
-            'overall_score': 0,
-            'category_scores': {},
-            'strengths': [],
-            'weaknesses': [],
-            'recommendations': [],
-            'detailed_analysis': {}
-        }
-        
-        # Evaluate each category
-        evaluation['category_scores']['technical_skills'] = self._evaluate_technical_skills(parsed_resume)
-        evaluation['category_scores']['experience'] = self._evaluate_experience(parsed_resume)
-        evaluation['category_scores']['education'] = self._evaluate_education(parsed_resume)
-        evaluation['category_scores']['communication'] = self._evaluate_communication(parsed_resume)
-        evaluation['category_scores']['achievements'] = self._evaluate_achievements(parsed_resume)
-        evaluation['category_scores']['completeness'] = self._evaluate_completeness(parsed_resume)
-        
-        # Calculate overall score (weighted average)
-        weights = {
-            'technical_skills': 0.3,
-            'experience': 0.25,
-            'education': 0.15,
-            'communication': 0.1,
-            'achievements': 0.1,
-            'completeness': 0.1
-        }
-        
-        weighted_score = sum(
-            evaluation['category_scores'][category] * weight 
-            for category, weight in weights.items()
-        )
-        evaluation['overall_score'] = round(weighted_score, 2)
-        
-        # Generate insights
-        evaluation['strengths'] = self._identify_strengths(parsed_resume, evaluation['category_scores'])
-        evaluation['weaknesses'] = self._identify_weaknesses(parsed_resume, evaluation['category_scores'])
-        evaluation['recommendations'] = self._generate_recommendations(parsed_resume, evaluation['category_scores'])
-        
-        return evaluation
-    
-    def _get_default_criteria(self) -> Dict:
-        """Default evaluation criteria"""
-        return {
-            'min_experience_years': 2,
-            'required_skills': [],
-            'preferred_skills': [],
-            'education_level': 'bachelor',
-            'industry': 'technology'
-        }
-    
-    def _evaluate_technical_skills(self, resume: Dict) -> float:
-        """Evaluate technical skills comprehensiveness and relevance"""
-        skills = resume.get('skills', {})
-        
-        score = 0
-        total_skills = sum(len(skill_list) for skill_list in skills.values())
-        
-        if total_skills == 0:
-            return 0
-        
-        # Score based on variety of skill categories
-        categories_with_skills = sum(1 for skill_list in skills.values() if skill_list)
-        score += (categories_with_skills / len(skills)) * 30  # Max 30 points for diversity
-        
-        # Score based on total number of relevant skills
-        if total_skills >= 20:
-            score += 40  # Max 40 points for comprehensive skills
-        elif total_skills >= 10:
-            score += 25
-        elif total_skills >= 5:
-            score += 15
-        else:
-            score += 5
-        
-        # Bonus for modern/in-demand technologies
-        modern_techs = ['Python', 'React', 'Node.js', 'AWS', 'Docker', 'Kubernetes', 'Machine Learning']
-        modern_count = sum(1 for tech in modern_techs 
-                          for skill_list in skills.values() 
-                          for skill in skill_list 
-                          if tech.lower() in skill.lower())
-        
-        score += min(modern_count * 5, 30)  # Max 30 bonus points
-        
-        return min(score, 100)
-    
-    def _evaluate_experience(self, resume: Dict) -> float:
-        """Evaluate work experience quality and relevance"""
-        experience = resume.get('experience', [])
-        
-        if not experience:
-            return 10  # Minimum score for students/entry-level
-        
-        score = 0
-        
-        # Score based on number of positions
-        score += min(len(experience) * 15, 45)  # Max 45 for 3+ positions
-        
-        # Score based on description quality
-        total_descriptions = sum(len(exp.get('description', [])) for exp in experience)
-        if total_descriptions >= 10:
-            score += 25
-        elif total_descriptions >= 5:
-            score += 15
-        else:
-            score += 5
-        
-        # Score based on progression (title improvements)
-        titles = [exp.get('title', '').lower() for exp in experience]
-        progression_keywords = ['senior', 'lead', 'manager', 'director', 'principal']
-        
-        if any(keyword in ' '.join(titles) for keyword in progression_keywords):
-            score += 20
-        
-        # Score based on company information completeness
-        companies_listed = sum(1 for exp in experience if exp.get('company'))
-        score += (companies_listed / len(experience)) * 10
-        
-        return min(score, 100)
-    
-    def _evaluate_education(self, resume: Dict) -> float:
-        """Evaluate educational background"""
-        education = resume.get('education', [])
-        
-        if not education:
-            return 20  # Some score for self-taught candidates
-        
-        score = 40  # Base score for having education
-        
-        # Score based on degree level
-        degrees = [edu.get('degree', '').lower() for edu in education]
-        degree_text = ' '.join(degrees)
-        
-        if any(keyword in degree_text for keyword in ['phd', 'ph.d', 'doctorate']):
-            score += 30
-        elif any(keyword in degree_text for keyword in ['master', 'm.s', 'm.a', 'mba', 'm.tech']):
-            score += 20
-        elif any(keyword in degree_text for keyword in ['bachelor', 'b.s', 'b.a', 'b.tech']):
-            score += 10
-        
-        # Score based on GPA if available
-        for edu in education:
-            gpa = edu.get('gpa')
-            if gpa:
-                try:
-                    gpa_float = float(gpa)
-                    if gpa_float >= 3.5:
-                        score += 15
-                    elif gpa_float >= 3.0:
-                        score += 10
-                    break
-                except ValueError:
-                    continue
-        
-        # Score based on relevant field
-        relevant_fields = ['computer', 'engineering', 'technology', 'science', 'mathematics']
-        if any(field in degree_text for field in relevant_fields):
-            score += 15
-        
-        return min(score, 100)
-    
-    def _evaluate_communication(self, resume: Dict) -> float:
-        """Evaluate communication skills based on resume quality"""
-        raw_text = resume.get('raw_text', '')
-        
-        if not raw_text:
-            return 0
-        
-        score = 0
-        
-        # Check for proper structure
-        sections = ['experience', 'education', 'skills']
-        section_count = sum(1 for section in sections if section in raw_text.lower())
-        score += (section_count / len(sections)) * 30
-        
-        # Check text quality (length, completeness)
-        if len(raw_text) >= 1000:
-            score += 25
-        elif len(raw_text) >= 500:
-            score += 15
-        else:
-            score += 5
-        
-        # Check for contact information
-        contact = resume.get('contact_info', {})
-        contact_score = sum(10 for key in ['email', 'phone'] if contact.get(key))
-        score += contact_score
-        
-        # Check for professional profiles
-        if contact.get('linkedin'):
-            score += 10
-        if contact.get('github'):
-            score += 15
-        
-        # Check language quality (basic grammar check)
-        sentences = sent_tokenize(raw_text)
-        if len(sentences) >= 10:
-            score += 10
-        
-        return min(score, 100)
-    
-    def _evaluate_achievements(self, resume: Dict) -> float:
-        """Evaluate achievements and certifications"""
-        achievements = resume.get('achievements', [])
-        certifications = resume.get('certifications', [])
-        projects = resume.get('projects', [])
-        
-        score = 0
-        
-        # Score achievements
-        score += min(len(achievements) * 15, 30)
-        
-        # Score certifications
-        score += min(len(certifications) * 10, 40)
-        
-        # Score projects
-        score += min(len(projects) * 8, 30)
-        
-        # Bonus for having all three types
-        if achievements and certifications and projects:
-            score += 20
-        
-        return min(score, 100)
-    
-    def _evaluate_completeness(self, resume: Dict) -> float:
-        """Evaluate resume completeness"""
-        required_sections = [
-            'contact_info', 'experience', 'education', 'skills'
-        ]
-        
-        score = 0
-        
-        for section in required_sections:
-            section_data = resume.get(section)
-            if section_data:
-                if isinstance(section_data, list) and section_data:
-                    score += 25
-                elif isinstance(section_data, dict) and any(section_data.values()):
-                    score += 25
-                else:
-                    score += 10
-        
-        return min(score, 100)
-    
-    def _identify_strengths(self, resume: Dict, scores: Dict) -> List[str]:
-        """Identify candidate strengths"""
-        strengths = []
-        
-        if scores.get('technical_skills', 0) >= 80:
-            strengths.append("Excellent technical skill diversity and depth")
-        
-        if scores.get('experience', 0) >= 80:
-            strengths.append("Strong professional experience with detailed descriptions")
-        
-        if scores.get('education', 0) >= 80:
-            strengths.append("Solid educational background")
-        
-        if scores.get('communication', 0) >= 80:
-            strengths.append("Well-structured and comprehensive resume")
-        
-        if scores.get('achievements', 0) >= 70:
-            strengths.append("Good track record of achievements and certifications")
-        
-        # Specific skill strengths
-        skills = resume.get('skills', {})
-        if len(skills.get('programming_languages', [])) >= 5:
-            strengths.append("Proficient in multiple programming languages")
-        
-        if skills.get('frameworks', []):
-            strengths.append("Experience with modern frameworks and technologies")
-        
-        return strengths
-    
-    def _identify_weaknesses(self, resume: Dict, scores: Dict) -> List[str]:
-        """Identify areas for improvement"""
-        weaknesses = []
-        
-        if scores.get('technical_skills', 0) < 50:
-            weaknesses.append("Limited technical skills or lack of skill diversity")
-        
-        if scores.get('experience', 0) < 50:
-            weaknesses.append("Insufficient work experience details or limited experience")
-        
-        if scores.get('education', 0) < 40:
-            weaknesses.append("Educational background could be strengthened")
-        
-        if scores.get('communication', 0) < 60:
-            weaknesses.append("Resume structure and presentation needs improvement")
-        
-        if scores.get('achievements', 0) < 30:
-            weaknesses.append("Lack of demonstrated achievements or certifications")
-        
-        # Missing contact information
-        contact = resume.get('contact_info', {})
-        if not contact.get('email'):
-            weaknesses.append("Missing email contact information")
-        
-        if not contact.get('linkedin') and not contact.get('github'):
-            weaknesses.append("Missing professional online presence (LinkedIn/GitHub)")
-        
-        return weaknesses
-    
-    def _generate_recommendations(self, resume: Dict, scores: Dict) -> List[str]:
-        """Generate improvement recommendations"""
-        recommendations = []
-        
-        if scores.get('technical_skills', 0) < 70:
-            recommendations.append("Consider adding more technical skills and modern technologies")
-        
-        if scores.get('experience', 0) < 70:
-            recommendations.append("Provide more detailed descriptions of work experience with specific achievements")
-        
-        if scores.get('communication', 0) < 70:
-            recommendations.append("Improve resume formatting and ensure all sections are well-structured")
-        
-        if not resume.get('certifications'):
-            recommendations.append("Consider obtaining relevant professional certifications")
-        
-        if not resume.get('projects'):
-            recommendations.append("Add personal or professional projects to demonstrate practical skills")
-        
-        contact = resume.get('contact_info', {})
-        if not contact.get('linkedin'):
-            recommendations.append("Create a professional LinkedIn profile")
-        
-        if not contact.get('github') and resume.get('skills', {}).get('programming_languages'):
-            recommendations.append("Create a GitHub profile to showcase coding projects")
-        
-        return recommendations
 
-def create_resume_screener_agent():
-    """Create the Resume Screener Agent using CrewAI"""
-    
-    # Initialize tools
-    parser_tool = ResumeParserTool()
-    matching_tool = SkillMatchingTool()
-    
-    # Create the agent
-    resume_screener = Agent(
-        role="Resume Screening Specialist",
-        goal="Thoroughly analyze and evaluate resumes to assess candidate suitability",
-        backstory="""You are an expert HR professional with over 10 years of experience in 
-        talent acquisition and resume screening. You have a keen eye for identifying 
-        candidate potential and matching skills to job requirements. You excel at 
-        comprehensive resume analysis, considering technical skills, experience quality, 
-        educational background, and overall presentation.""",
-        tools=[parser_tool, matching_tool],
-        verbose=True,
-        allow_delegation=False
-    )
-    
-    return resume_screener
-
-class ResumeScreenerWorkflow:
-    """Main workflow class for resume screening process"""
+class LLMAnalysisTool(BaseTool):
+    name: str = "LLM Analysis"
+    description: str = "Uses LLM to analyze resume content and provide intelligent insights"
+    llm: Optional[ChatOpenAI] = None
     
     def __init__(self, llm=None):
-        """Initialize the workflow with optional LLM"""
-        self.agent = create_resume_screener_agent()
-        self.parser_tool = ResumeParserTool()
-        self.matching_tool = SkillMatchingTool()
-        self.llm = llm or self._get_default_llm()
+        # Initialize pydantic BaseModel field via super().__init__ to avoid "no field" errors
+        resolved_llm = llm or self._get_default_llm()
+        super().__init__(llm=resolved_llm)
         
     def _get_default_llm(self):
-        """Get default LLM (you may need to configure this)"""
+        """Get default LLM"""
+        # Try OpenAI first
+        openai_api_key = os.environ.get("OPENAI_API_KEY")
+        if openai_api_key:
+            try:
+                model_name = os.environ.get("OPENAI_MODEL", "gpt-4o")
+                return ChatOpenAI(
+                    temperature=0.2,
+                    model=model_name,
+                    openai_api_key=openai_api_key
+                )
+            except Exception as e:
+                logger.warning(f"OpenAI init failed, will try Gemini fallback: {e}")
+
+        # Fallback to Google Gemini (via LangChain) if available
+        gemini_api_key = os.environ.get("GEMINI_API_KEY")
+        if gemini_api_key and ChatGoogleGenerativeAI is not None:
+            try:
+                return ChatGoogleGenerativeAI(
+                    model="gemini-1.5-pro",
+                    temperature=0.2,
+                    google_api_key=gemini_api_key
+                )
+            except Exception as e:
+                logger.warning(f"Gemini init failed: {e}")
+
+        # If we get here, no provider could be initialized
+        provider_hint = (
+            "Set OPENAI_API_KEY or GEMINI_API_KEY in your environment/.env."
+        )
+        raise ValueError(f"No LLM provider available. {provider_hint}")
+    
+    def _get_gemini_llm(self):
+        """Create a Gemini LLM instance if possible."""
+        gemini_api_key = os.environ.get("GEMINI_API_KEY")
+        if not gemini_api_key:
+            return None
+        # Try LangChain's Gemini first
+        if ChatGoogleGenerativeAI is not None:
+            try:
+                return ChatGoogleGenerativeAI(
+                    model="gemini-1.5-pro",
+                    temperature=0.2,
+                    google_api_key=gemini_api_key
+                )
+            except Exception as e:
+                logger.warning(f"LangChain Gemini init failed, will try direct SDK: {e}")
+        # Fallback to direct Google SDK adapter
         try:
-            openai_api_key = os.environ.get("OPENAI_API_KEY")
-            return OpenAI(temperature=0.1, openai_api_key=openai_api_key)
-        except:
-            logger.warning("OpenAI not configured, using mock LLM")
+            return _SimpleGeminiClient(api_key=gemini_api_key, model="gemini-1.5-pro", temperature=0.2)
+        except Exception as e:
+            logger.warning(f"Direct Gemini SDK init failed: {e}")
+        return None
+
+    def _get_gemini_flash_llm(self):
+        """Fallback to lower-cost/lower-quota Gemini model to avoid free-tier quota caps."""
+        gemini_api_key = os.environ.get("GEMINI_API_KEY")
+        if not gemini_api_key:
+            return None
+        if ChatGoogleGenerativeAI is not None:
+            try:
+                return ChatGoogleGenerativeAI(
+                    model="gemini-1.5-flash",
+                    temperature=0.2,
+                    google_api_key=gemini_api_key
+                )
+            except Exception:
+                pass
+        try:
+            return _SimpleGeminiClient(api_key=gemini_api_key, model="gemini-1.5-flash", temperature=0.2)
+        except Exception:
             return None
     
-    def screen_resume(self, file_path: str, job_criteria: Dict = None) -> Dict:
-        """Main method to screen a resume"""
+    def _safe_invoke(self, messages):
+        """Invoke the LLM; on OpenAI quota/429 errors, failover to Gemini once and retry."""
         try:
-            logger.info(f"Starting resume screening for: {file_path}")
+            return self.llm.invoke(messages)
+        except Exception as e:
+            err_text = str(e)
+            is_quota_or_rate = (
+                '429' in err_text or 'insufficient_quota' in err_text or 'rate limit' in err_text.lower()
+            )
+            # First failover: switch to Gemini Pro
+            if is_quota_or_rate:
+                gemini = self._get_gemini_llm()
+                if gemini is not None and self.llm is not gemini:
+                    logger.warning("OpenAI call failed with quota/429. Switching to Gemini and retrying once.")
+                    self.llm = gemini
+                    try:
+                        return self.llm.invoke(messages)
+                    except Exception as ge:
+                        gerr = str(ge)
+                        is_gemini_quota = '429' in gerr or 'quota' in gerr.lower()
+                        if is_gemini_quota:
+                            # Wait briefly then try flash model
+                            import time
+                            time.sleep(6)
+                            gemini_flash = self._get_gemini_flash_llm()
+                            if gemini_flash is not None:
+                                logger.warning("Gemini quota error. Switching to gemini-1.5-flash and retrying.")
+                                self.llm = gemini_flash
+                                return self.llm.invoke(messages)
+                        raise
+            # If not quota/rate errors or no alternative, re-raise
+            raise
+    
+    def _run(self, parsed_resume: Dict, job_criteria: Dict = None) -> Dict:
+        """Analyze resume using LLM"""
+        try:
+            # Generate comprehensive analysis using LLM
+            analysis = {
+                'overall_assessment': self._analyze_overall_resume(parsed_resume, job_criteria),
+                'technical_skills_analysis': self._analyze_technical_skills(parsed_resume),
+                'experience_analysis': self._analyze_experience(parsed_resume),
+                'education_analysis': self._analyze_education(parsed_resume),
+                'strengths_weaknesses': self._analyze_strengths_weaknesses(parsed_resume),
+                'scoring': self._generate_scores(parsed_resume, job_criteria),
+                'recommendations': self._generate_recommendations(parsed_resume, job_criteria),
+                'hiring_decision': self._generate_hiring_decision(parsed_resume, job_criteria)
+            }
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Error in LLM analysis: {str(e)}")
+            return {"error": str(e)}
+    
+    def _analyze_overall_resume(self, resume: Dict, job_criteria: Dict = None) -> str:
+        """Generate overall resume assessment using LLM"""
+        
+        prompt_template = """
+        You are an expert HR professional analyzing a resume. Provide an overall assessment as a structured, bullet-point report by section, not paragraphs.
+
+        RESUME DATA:
+        Contact Info: {contact_info}
+        Education: {education}
+        Experience: {experience}
+        Skills: {skills}
+        Certifications: {certifications}
+        Projects: {projects}
+        Achievements: {achievements}
+
+        JOB CRITERIA (if provided): {job_criteria}
+
+        Format the response EXACTLY with these top-level headings and concise bullet points under each:
+        - SUMMARY
+          - First impression
+          - Resume quality & clarity
+          - Market competitiveness
+        - SKILLS
+          - Strengths
+          - Gaps vs job criteria
+          - Notable tools/technologies
+        - EXPERIENCE
+          - Relevance to role
+          - Impact highlights
+          - Career trajectory
+        - PROJECTS
+          - Most relevant projects
+          - Outcomes/metrics (if any)
+        - EDUCATION
+          - Degree(s) relevance
+          - Notable achievements
+        - CERTIFICATIONS
+          - Relevant credentials
+        - ACHIEVEMENTS
+          - Awards/recognitions
+
+        Constraints:
+        - Keep each bullet to a single sentence.
+        - No prose paragraphs.
+        - Be specific and actionable where possible.
+        """
+        
+        messages = [
+            SystemMessage(content="You are an expert HR professional with 15+ years of experience in talent acquisition and resume analysis."),
+            HumanMessage(content=prompt_template.format(
+                contact_info=resume.get('contact_info', {}),
+                education=resume.get('education', []),
+                experience=resume.get('experience', []),
+                skills=resume.get('skills', {}),
+                certifications=resume.get('certifications', []),
+                projects=resume.get('projects', []),
+                achievements=resume.get('achievements', []),
+                job_criteria=job_criteria or "No specific job criteria provided"
+            ))
+        ]
+        
+        response = self._safe_invoke(messages)
+        return response.content
+    
+    def _analyze_technical_skills(self, resume: Dict) -> str:
+        """Analyze technical skills using LLM"""
+        
+        skills = resume.get('skills', {})
+        
+        prompt_template = """
+        Analyze the technical skills of this candidate:
+
+        Programming Languages: {programming_languages}
+        Frameworks: {frameworks}
+        Databases: {databases}
+        Tools: {tools}
+        Technical Skills: {technical}
+
+        Provide analysis on:
+        1. Skill diversity and depth
+        2. Modern vs legacy technologies
+        3. Skill combinations and stack coherence
+        4. Missing skills for typical roles
+        5. Overall technical competency level
+
+        Rate the technical skills on a scale of 1-100 and justify your rating.
+        """
+        
+        messages = [
+            SystemMessage(content="You are a technical hiring manager with expertise in evaluating technical skills across different domains."),
+            HumanMessage(content=prompt_template.format(
+                programming_languages=skills.get('programming_languages', []),
+                frameworks=skills.get('frameworks', []),
+                databases=skills.get('databases', []),
+                tools=skills.get('tools', []),
+                technical=skills.get('technical', [])
+            ))
+        ]
+        
+        response = self._safe_invoke(messages)
+        return response.content
+    
+    def _analyze_experience(self, resume: Dict) -> str:
+        """Analyze work experience using LLM"""
+        
+        experience = resume.get('experience', [])
+        
+        prompt_template = """
+        Analyze the work experience of this candidate:
+
+        WORK EXPERIENCE:
+        {experience_details}
+
+        Provide analysis on:
+        1. Career progression and growth trajectory
+        2. Quality of job descriptions and achievements
+        3. Industry relevance and diversity
+        4. Leadership and responsibility indicators
+        5. Experience depth vs breadth
+
+        Rate the experience quality on a scale of 1-100 and justify your rating.
+        """
+        
+        experience_details = ""
+        for i, exp in enumerate(experience, 1):
+            experience_details += f"""
+        Position {i}:
+        - Title: {exp.get('title', 'Not specified')}
+        - Company: {exp.get('company', 'Not specified')}
+        - Duration: {exp.get('duration', 'Not specified')}
+        - Responsibilities: {', '.join(exp.get('description', []))}
+        """
+        
+        messages = [
+            SystemMessage(content="You are an experienced HR director specializing in evaluating professional work experience and career development."),
+            HumanMessage(content=prompt_template.format(experience_details=experience_details))
+        ]
+        
+        response = self._safe_invoke(messages)
+        return response.content
+    
+    def _analyze_education(self, resume: Dict) -> str:
+        """Analyze educational background using LLM"""
+        
+        education = resume.get('education', [])
+        
+        prompt_template = """
+        Analyze the educational background of this candidate:
+
+        EDUCATION:
+        {education_details}
+
+        Provide analysis on:
+        1. Educational level and relevance
+        2. Institution quality and reputation (if known)
+        3. Academic performance indicators
+        4. Field of study alignment with career
+        5. Additional learning and continuous education
+
+        Rate the educational background on a scale of 1-100 and justify your rating.
+        """
+        
+        education_details = ""
+        for i, edu in enumerate(education, 1):
+            education_details += f"""
+        Education {i}:
+        - Degree: {edu.get('degree', 'Not specified')}
+        - Institution: {edu.get('institution', 'Not specified')}
+        - Year: {edu.get('year', 'Not specified')}
+        - GPA: {edu.get('gpa', 'Not specified')}
+        """
+        
+        messages = [
+            SystemMessage(content="You are an academic advisor and HR professional with expertise in evaluating educational qualifications."),
+            HumanMessage(content=prompt_template.format(education_details=education_details))
+        ]
+        
+        response = self._safe_invoke(messages)
+        return response.content
+    
+    def _analyze_strengths_weaknesses(self, resume: Dict) -> Dict[str, List[str]]:
+        """Identify strengths and weaknesses using LLM"""
+        
+        prompt_template = """
+        Based on this resume data, identify the candidate's key strengths and weaknesses:
+
+        COMPLETE RESUME DATA:
+        {resume_summary}
+
+        Provide:
+        1. Top 5 strengths of this candidate
+        2. Top 5 areas for improvement/weaknesses
+        3. Unique selling points that make this candidate stand out
+        4. Red flags or concerns (if any)
+
+        Format your response as:
+        STRENGTHS:
+        - [strength 1]
+        - [strength 2]
+        ...
+
+        WEAKNESSES:
+        - [weakness 1]
+        - [weakness 2]
+        ...
+
+        UNIQUE SELLING POINTS:
+        - [point 1]
+        - [point 2]
+        ...
+
+        RED FLAGS:
+        - [flag 1] (if any)
+        ...
+        """
+        
+        # Create resume summary
+        resume_summary = f"""
+        Contact: {resume.get('contact_info', {})}
+        Education: {len(resume.get('education', []))} entries
+        Experience: {len(resume.get('experience', []))} positions
+        Skills: {sum(len(v) for v in resume.get('skills', {}).values())} total skills
+        Certifications: {len(resume.get('certifications', []))} certifications
+        Projects: {len(resume.get('projects', []))} projects
+        Achievements: {len(resume.get('achievements', []))} achievements
+        
+        Key Skills: {', '.join(resume.get('skills', {}).get('programming_languages', [])[:5])}
+        """
+        
+        messages = [
+            SystemMessage(content="You are a senior talent acquisition specialist with expertise in candidate assessment and evaluation."),
+            HumanMessage(content=prompt_template.format(resume_summary=resume_summary))
+        ]
+        
+        response = self._safe_invoke(messages)
+        
+        # Parse the response to extract structured data
+        content = response.content
+        strengths = []
+        weaknesses = []
+        
+        # Extract strengths
+        if "STRENGTHS:" in content:
+            strengths_section = content.split("STRENGTHS:")[1].split("WEAKNESSES:")[0]
+            strengths = [line.strip().lstrip('- ') for line in strengths_section.split('\n') if line.strip().startswith('-')]
+        
+        # Extract weaknesses
+        if "WEAKNESSES:" in content:
+            weaknesses_section = content.split("WEAKNESSES:")[1]
+            if "UNIQUE SELLING POINTS:" in weaknesses_section:
+                weaknesses_section = weaknesses_section.split("UNIQUE SELLING POINTS:")[0]
+            weaknesses = [line.strip().lstrip('- ') for line in weaknesses_section.split('\n') if line.strip().startswith('-')]
+        
+        return {
+            "strengths": strengths,
+            "weaknesses": weaknesses,
+            "full_analysis": content
+        }
+    
+    def _generate_scores(self, resume: Dict, job_criteria: Dict = None) -> Dict:
+        """Generate detailed scores using LLM"""
+        
+        prompt_template = """
+        As an expert HR analyst, provide numerical scores (1-100) for different aspects of this resume:
+
+        RESUME DATA:
+        {resume_data}
+
+        JOB CRITERIA: {job_criteria}
+
+        Provide scores for:
+        1. Technical Skills (1-100)
+        2. Experience Quality (1-100)
+        3. Education Level (1-100)
+        4. Resume Presentation (1-100)
+        5. Career Progression (1-100)
+        6. Overall Marketability (1-100)
+
+        For each score, provide a 1-sentence justification.
+
+        Format as:
+        Technical Skills: [score]/100 - [justification]
+        Experience Quality: [score]/100 - [justification]
+        Education Level: [score]/100 - [justification]
+        Resume Presentation: [score]/100 - [justification]
+        Career Progression: [score]/100 - [justification]
+        Overall Marketability: [score]/100 - [justification]
+
+        Also provide an OVERALL SCORE as a weighted average.
+        """
+        
+        resume_data = {
+            'skills_count': sum(len(v) for v in resume.get('skills', {}).values()),
+            'experience_count': len(resume.get('experience', [])),
+            'education_count': len(resume.get('education', [])),
+            'certifications_count': len(resume.get('certifications', [])),
+            'projects_count': len(resume.get('projects', [])),
+            'has_contact_info': bool(resume.get('contact_info', {}).get('email'))
+        }
+        
+        messages = [
+            SystemMessage(content="You are a quantitative HR analyst specializing in resume scoring and candidate evaluation metrics."),
+            HumanMessage(content=prompt_template.format(
+                resume_data=resume_data,
+                job_criteria=job_criteria or "General technical role"
+            ))
+        ]
+        
+        response = self._safe_invoke(messages)
+        
+        # Parse scores from response
+        content = response.content
+        scores = {}
+        
+        score_patterns = [
+            (r'Technical Skills:\s*(\d+)/100', 'technical_skills'),
+            (r'Experience Quality:\s*(\d+)/100', 'experience'),
+            (r'Education Level:\s*(\d+)/100', 'education'),
+            (r'Resume Presentation:\s*(\d+)/100', 'presentation'),
+            (r'Career Progression:\s*(\d+)/100', 'career_progression'),
+            (r'Overall Marketability:\s*(\d+)/100', 'marketability'),
+            (r'OVERALL SCORE.*?(\d+)', 'overall_score')
+        ]
+        
+        for pattern, key in score_patterns:
+            match = re.search(pattern, content, re.IGNORECASE)
+            if match:
+                scores[key] = int(match.group(1))
+        
+        # Calculate overall score if not provided
+        if 'overall_score' not in scores and len(scores) > 0:
+            weights = {
+                'technical_skills': 0.3,
+                'experience': 0.25,
+                'education': 0.15,
+                'presentation': 0.1,
+                'career_progression': 0.1,
+                'marketability': 0.1
+            }
+            
+            weighted_score = sum(scores.get(k, 0) * v for k, v in weights.items())
+            scores['overall_score'] = int(weighted_score)
+        
+        scores['detailed_analysis'] = content
+        return scores
+    
+    def _generate_recommendations(self, resume: Dict, job_criteria: Dict = None) -> str:
+        """Generate improvement recommendations using LLM"""
+        
+        prompt_template = """
+        Based on this resume analysis, provide specific, actionable recommendations for improvement:
+
+        RESUME SUMMARY:
+        - Skills: {skills_summary}
+        - Experience: {experience_summary}
+        - Education: {education_summary}
+        - Certifications: {cert_count} certifications
+        - Projects: {project_count} projects
+
+        JOB MARKET CONTEXT: {job_criteria}
+
+        Provide:
+        1. Immediate improvements (can be done in 1-2 weeks)
+        2. Medium-term improvements (1-3 months)
+        3. Long-term career development suggestions (6+ months)
+        4. Specific skills to acquire based on market trends
+        5. Resume formatting and presentation improvements
+
+        Be specific and actionable in your recommendations.
+        """
+        
+        skills_summary = f"Total: {sum(len(v) for v in resume.get('skills', {}).values())}"
+        experience_summary = f"{len(resume.get('experience', []))} positions"
+        education_summary = f"{len(resume.get('education', []))} degrees/programs"
+        
+        messages = [
+            SystemMessage(content="You are a career coach and resume improvement specialist with expertise in current job market trends."),
+            HumanMessage(content=prompt_template.format(
+                skills_summary=skills_summary,
+                experience_summary=experience_summary,
+                education_summary=education_summary,
+                cert_count=len(resume.get('certifications', [])),
+                project_count=len(resume.get('projects', [])),
+                job_criteria=job_criteria or "General technology sector"
+            ))
+        ]
+        
+        response = self._safe_invoke(messages)
+        return response.content
+    
+    def _generate_hiring_decision(self, resume: Dict, job_criteria: Dict = None) -> Dict:
+        """Generate hiring decision and rationale using LLM"""
+        
+        prompt_template = """
+        As a hiring manager, make a hiring decision for this candidate:
+
+        CANDIDATE PROFILE:
+        {candidate_summary}
+
+        JOB REQUIREMENTS: {job_criteria}
+
+        Provide:
+        1. DECISION: HIRE / INTERVIEW / MAYBE / REJECT
+        2. CONFIDENCE LEVEL: HIGH / MEDIUM / LOW
+        3. DETAILED RATIONALE (2-3 paragraphs explaining your decision)
+        4. INTERVIEW FOCUS AREAS (if recommending interview)
+        5. SALARY EXPECTATION RANGE (if applicable)
+        6. ONBOARDING CONSIDERATIONS (if hiring)
+
+        Base your decision on:
+        - Skills match with requirements
+        - Experience relevance and quality
+        - Growth potential
+        - Cultural fit indicators
+        - Market competitiveness
+        """
+        
+        # Create candidate summary
+        skills = resume.get('skills', {})
+        candidate_summary = f"""
+        Technical Skills: {', '.join(skills.get('programming_languages', [])[:5])}
+        Frameworks: {', '.join(skills.get('frameworks', [])[:3])}
+        Experience: {len(resume.get('experience', []))} positions
+        Education: {len(resume.get('education', []))} degrees
+        Certifications: {len(resume.get('certifications', []))}
+        Projects: {len(resume.get('projects', []))}
+        Contact Info Complete: {bool(resume.get('contact_info', {}).get('email'))}
+        """
+        
+        messages = [
+            SystemMessage(content="You are a senior hiring manager with 10+ years of experience in technical recruitment and candidate evaluation."),
+            HumanMessage(content=prompt_template.format(
+                candidate_summary=candidate_summary,
+                job_criteria=job_criteria or "Senior Software Developer role in technology company"
+            ))
+        ]
+        
+        response = self._safe_invoke(messages)
+        content = response.content
+        
+        # Parse decision
+        decision = "MAYBE"  # default
+        confidence = "MEDIUM"  # default
+        
+        decision_match = re.search(r'DECISION:\s*(HIRE|INTERVIEW|MAYBE|REJECT)', content, re.IGNORECASE)
+        if decision_match:
+            decision = decision_match.group(1).upper()
+        
+        confidence_match = re.search(r'CONFIDENCE LEVEL:\s*(HIGH|MEDIUM|LOW)', content, re.IGNORECASE)
+        if confidence_match:
+            confidence = confidence_match.group(1).upper()
+        
+        return {
+            'decision': decision,
+            'confidence': confidence,
+            'detailed_rationale': content,
+            'recommendation_summary': f"{decision} with {confidence} confidence"
+        }
+
+
+class ResumeScreenerWorkflow:
+    """Main workflow class for LLM-powered resume screening"""
+    
+    def __init__(self, llm=None):
+        """Initialize the workflow with LLM"""
+        self.parser_tool = ResumeParserTool()
+        
+        # Initialize the analysis tool with proper LLM handling
+        try:
+            self.analysis_tool = LLMAnalysisTool(llm=llm)
+            logger.info("LLM Analysis Tool initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize LLM Analysis Tool: {e}")
+            raise e
+    
+    def screen_resume(self, file_path: str, job_criteria: Dict = None) -> Dict:
+        """Main method to screen a resume using LLM analysis"""
+        try:
+            logger.info(f"Starting LLM-powered resume screening for: {file_path}")
             
             # Step 1: Parse the resume
             logger.info("Parsing resume...")
@@ -827,21 +1092,28 @@ class ResumeScreenerWorkflow:
                     "file_path": file_path
                 }
             
-            # Step 2: Evaluate the resume
-            logger.info("Evaluating resume...")
-            evaluation = self.matching_tool._run(parsed_resume, job_criteria)
+            # Step 2: LLM Analysis
+            logger.info("Performing LLM analysis...")
+            llm_analysis = self.analysis_tool._run(parsed_resume, job_criteria)
+            
+            if "error" in llm_analysis:
+                return {
+                    "success": False,
+                    "error": llm_analysis["error"],
+                    "file_path": file_path
+                }
             
             # Step 3: Generate comprehensive report
-            logger.info("Generating screening report...")
-            screening_report = self._generate_screening_report(
-                file_path, parsed_resume, evaluation
+            logger.info("Generating comprehensive screening report...")
+            screening_report = self._generate_comprehensive_report(
+                file_path, parsed_resume, llm_analysis, job_criteria
             )
             
             return {
                 "success": True,
                 "file_path": file_path,
                 "parsed_data": parsed_resume,
-                "evaluation": evaluation,
+                "llm_analysis": llm_analysis,
                 "screening_report": screening_report,
                 "timestamp": datetime.now().isoformat()
             }
@@ -854,372 +1126,358 @@ class ResumeScreenerWorkflow:
                 "file_path": file_path,
                 "timestamp": datetime.now().isoformat()
             }
-    
-    def _generate_screening_report(self, file_path: str, parsed_resume: Dict, 
-                                 evaluation: Dict) -> Dict:
+    def _generate_comprehensive_report(self, file_path: str, parsed_resume: Dict, 
+                                     llm_analysis: Dict, job_criteria: Dict = None) -> Dict:
         """Generate comprehensive screening report"""
         
+        # Extract key information for summary
+        contact = parsed_resume.get('contact_info', {})
+        skills = parsed_resume.get('skills', {})
+        
         report = {
-            "candidate_summary": self._create_candidate_summary(parsed_resume),
-            "evaluation_summary": self._create_evaluation_summary(evaluation),
-            "detailed_analysis": {
-                "technical_skills": self._analyze_technical_skills(parsed_resume),
-                "experience_analysis": self._analyze_experience(parsed_resume),
-                "education_analysis": self._analyze_education(parsed_resume),
-                "contact_completeness": self._analyze_contact_info(parsed_resume)
+            "executive_summary": {
+                "candidate_name": file_path.split('/')[-1].replace('.pdf', '').replace('.docx', ''),
+                "email": contact.get('email', 'Not provided'),
+                "phone": contact.get('phone', 'Not provided'),
+                "linkedin": contact.get('linkedin', 'Not provided'),
+                "overall_assessment": llm_analysis.get('overall_assessment', ''),
+                "hiring_decision": llm_analysis.get('hiring_decision', {}),
+                "key_scores": llm_analysis.get('scoring', {})
             },
-            "recommendation": self._generate_final_recommendation(evaluation),
-            "next_steps": self._suggest_next_steps(evaluation)
+            
+            "detailed_analysis": {
+                "technical_skills": llm_analysis.get('technical_skills_analysis', ''),
+                "experience_quality": llm_analysis.get('experience_analysis', ''),
+                "educational_background": llm_analysis.get('education_analysis', ''),
+                "strengths_weaknesses": llm_analysis.get('strengths_weaknesses', {})
+            },
+            
+            "recommendations": {
+                "improvement_suggestions": llm_analysis.get('recommendations', ''),
+                "interview_focus": self._extract_interview_focus(llm_analysis),
+                "next_steps": self._generate_next_steps(llm_analysis)
+            },
+            
+            "data_completeness": {
+                "contact_info_complete": self._assess_contact_completeness(contact),
+                "resume_sections_present": self._assess_resume_completeness(parsed_resume),
+                "missing_elements": self._identify_missing_elements(parsed_resume)
+            }
         }
         
         return report
     
-    def _create_candidate_summary(self, parsed_resume: Dict) -> Dict:
-        """Create a summary of the candidate"""
+    def _extract_interview_focus(self, llm_analysis: Dict) -> List[str]:
+        """Extract interview focus areas from LLM analysis"""
+        hiring_decision = llm_analysis.get('hiring_decision', {})
+        rationale = hiring_decision.get('detailed_rationale', '')
+        
+        # Look for interview focus areas in the rationale
+        focus_areas = []
+        if 'INTERVIEW FOCUS' in rationale:
+            focus_section = rationale.split('INTERVIEW FOCUS')[1]
+            if 'SALARY' in focus_section:
+                focus_section = focus_section.split('SALARY')[0]
+            
+            # Extract bullet points or numbered items
+            lines = focus_section.split('\n')
+            for line in lines:
+                line = line.strip()
+                if line.startswith(('-', '•', '*')) or re.match(r'^\d+\.', line):
+                    focus_areas.append(line.lstrip('-•* ').lstrip('1234567890. '))
+        
+        return focus_areas[:5]  # Top 5 focus areas
+    
+    def _generate_next_steps(self, llm_analysis: Dict) -> List[str]:
+        """Generate next steps based on LLM analysis"""
+        hiring_decision = llm_analysis.get('hiring_decision', {})
+        decision = hiring_decision.get('decision', 'MAYBE')
+        
+        if decision == 'HIRE':
+            return [
+                "Extend job offer",
+                "Negotiate salary and benefits",
+                "Begin reference checks",
+                "Prepare onboarding materials",
+                "Schedule start date"
+            ]
+        elif decision == 'INTERVIEW':
+            return [
+                "Schedule technical screening interview",
+                "Prepare targeted interview questions",
+                "Arrange technical assessment if needed",
+                "Coordinate with hiring team",
+                "Set up follow-up interview rounds"
+            ]
+        elif decision == 'MAYBE':
+            return [
+                "Request additional information",
+                "Compare with other candidates",
+                "Consider for alternative positions",
+                "Schedule brief screening call",
+                "Review portfolio/projects if available"
+            ]
+        else:  # REJECT
+            return [
+                "Send polite rejection email",
+                "Provide constructive feedback if requested",
+                "Keep resume on file for future opportunities",
+                "Update candidate tracking system",
+                "Consider for other open positions"
+            ]
+    
+    def _assess_contact_completeness(self, contact: Dict) -> Dict:
+        """Assess completeness of contact information"""
+        required_fields = ['email', 'phone']
+        optional_fields = ['linkedin', 'github']
+        
+        completeness = {
+            'required_present': sum(1 for field in required_fields if contact.get(field)),
+            'optional_present': sum(1 for field in optional_fields if contact.get(field)),
+            'total_score': 0,
+            'missing_required': [field for field in required_fields if not contact.get(field)],
+            'missing_optional': [field for field in optional_fields if not contact.get(field)]
+        }
+        
+        completeness['total_score'] = (
+            (completeness['required_present'] / len(required_fields)) * 70 +
+            (completeness['optional_present'] / len(optional_fields)) * 30
+        )
+        
+        return completeness
+    
+    def _assess_resume_completeness(self, parsed_resume: Dict) -> Dict:
+        """Assess completeness of resume sections"""
+        sections = {
+            'contact_info': bool(parsed_resume.get('contact_info', {}).get('email')),
+            'experience': len(parsed_resume.get('experience', [])) > 0,
+            'education': len(parsed_resume.get('education', [])) > 0,
+            'skills': sum(len(v) for v in parsed_resume.get('skills', {}).values()) > 0,
+            'projects': len(parsed_resume.get('projects', [])) > 0,
+            'certifications': len(parsed_resume.get('certifications', [])) > 0
+        }
+        
+        present_sections = sum(sections.values())
+        total_sections = len(sections)
+        
+        return {
+            'sections_present': sections,
+            'completeness_percentage': (present_sections / total_sections) * 100,
+            'missing_sections': [k for k, v in sections.items() if not v]
+        }
+    
+    def _identify_missing_elements(self, parsed_resume: Dict) -> List[str]:
+        """Identify missing resume elements"""
+        missing = []
+        
         contact = parsed_resume.get('contact_info', {})
+        if not contact.get('email'):
+            missing.append("Email address")
+        if not contact.get('phone'):
+            missing.append("Phone number")
+        if not contact.get('linkedin'):
+            missing.append("LinkedIn profile")
+        
+        if not parsed_resume.get('experience'):
+            missing.append("Work experience section")
+        
+        if not parsed_resume.get('education'):
+            missing.append("Education section")
+        
         skills = parsed_resume.get('skills', {})
-        experience = parsed_resume.get('experience', [])
-        education = parsed_resume.get('education', [])
+        if sum(len(v) for v in skills.values()) == 0:
+            missing.append("Skills section")
         
-        # Calculate total experience (rough estimate)
-        total_experience = len(experience)  # Simplified calculation
+        if not parsed_resume.get('projects'):
+            missing.append("Projects/portfolio section")
         
-        # Get highest education
-        education_levels = {'phd': 4, 'master': 3, 'bachelor': 2, 'associate': 1}
-        highest_education = "Not specified"
-        
-        for edu in education:
-            degree = edu.get('degree', '').lower()
-            for level, value in education_levels.items():
-                if level in degree:
-                    if highest_education == "Not specified" or education_levels.get(highest_education, 0) < value:
-                        highest_education = level.capitalize()
-        
-        # Get primary technical skills
-        primary_skills = []
-        for category in ['programming_languages', 'frameworks', 'databases']:
-            primary_skills.extend(skills.get(category, [])[:3])  # Top 3 from each
-        
-        return {
-            "email": contact.get('email', 'Not provided'),
-            "phone": contact.get('phone', 'Not provided'),
-            "linkedin": contact.get('linkedin', 'Not provided'),
-            "github": contact.get('github', 'Not provided'),
-            "estimated_experience": f"{total_experience} positions listed",
-            "highest_education": highest_education,
-            "primary_technical_skills": primary_skills[:8],  # Top 8 skills
-            "total_skills_count": sum(len(skill_list) for skill_list in skills.values()),
-            "certifications_count": len(parsed_resume.get('certifications', [])),
-            "projects_count": len(parsed_resume.get('projects', []))
-        }
-    
-    def _create_evaluation_summary(self, evaluation: Dict) -> Dict:
-        """Create evaluation summary"""
-        overall_score = evaluation.get('overall_score', 0)
-        
-        # Determine recommendation level
-        if overall_score >= 80:
-            recommendation_level = "Highly Recommended"
-        elif overall_score >= 65:
-            recommendation_level = "Recommended"
-        elif overall_score >= 50:
-            recommendation_level = "Consider with Reservations"
-        else:
-            recommendation_level = "Not Recommended"
-        
-        return {
-            "overall_score": overall_score,
-            "recommendation_level": recommendation_level,
-            "category_scores": evaluation.get('category_scores', {}),
-            "top_strengths": evaluation.get('strengths', [])[:3],
-            "main_concerns": evaluation.get('weaknesses', [])[:3]
-        }
-    
-    def _analyze_technical_skills(self, parsed_resume: Dict) -> Dict:
-        """Detailed technical skills analysis"""
-        skills = parsed_resume.get('skills', {})
-        
-        analysis = {
-            "programming_languages": {
-                "count": len(skills.get('programming_languages', [])),
-                "skills": skills.get('programming_languages', []),
-                "assessment": ""
-            },
-            "frameworks_and_libraries": {
-                "count": len(skills.get('frameworks', [])),
-                "skills": skills.get('frameworks', []),
-                "assessment": ""
-            },
-            "databases": {
-                "count": len(skills.get('databases', [])),
-                "skills": skills.get('databases', []),
-                "assessment": ""
-            },
-            "tools_and_platforms": {
-                "count": len(skills.get('tools', [])),
-                "skills": skills.get('tools', []),
-                "assessment": ""
-            }
-        }
-        
-        # Add assessments
-        if analysis["programming_languages"]["count"] >= 5:
-            analysis["programming_languages"]["assessment"] = "Excellent language diversity"
-        elif analysis["programming_languages"]["count"] >= 3:
-            analysis["programming_languages"]["assessment"] = "Good language knowledge"
-        else:
-            analysis["programming_languages"]["assessment"] = "Limited language exposure"
-        
-        if analysis["frameworks_and_libraries"]["count"] >= 3:
-            analysis["frameworks_and_libraries"]["assessment"] = "Good framework experience"
-        elif analysis["frameworks_and_libraries"]["count"] >= 1:
-            analysis["frameworks_and_libraries"]["assessment"] = "Basic framework knowledge"
-        else:
-            analysis["frameworks_and_libraries"]["assessment"] = "No frameworks mentioned"
-        
-        return analysis
-    
-    def _analyze_experience(self, parsed_resume: Dict) -> Dict:
-        """Detailed experience analysis"""
-        experience = parsed_resume.get('experience', [])
-        
-        if not experience:
-            return {
-                "total_positions": 0,
-                "experience_quality": "No experience listed",
-                "progression_analysis": "Cannot assess",
-                "description_quality": "No descriptions available"
-            }
-        
-        # Analyze description quality
-        total_descriptions = sum(len(exp.get('description', [])) for exp in experience)
-        avg_descriptions = total_descriptions / len(experience) if experience else 0
-        
-        if avg_descriptions >= 4:
-            description_quality = "Excellent - Detailed descriptions"
-        elif avg_descriptions >= 2:
-            description_quality = "Good - Adequate descriptions"
-        elif avg_descriptions >= 1:
-            description_quality = "Basic - Minimal descriptions"
-        else:
-            description_quality = "Poor - Missing descriptions"
-        
-        # Check for career progression
-        titles = [exp.get('title', '').lower() for exp in experience]
-        progression_keywords = ['senior', 'lead', 'manager', 'director', 'principal']
-        has_progression = any(keyword in ' '.join(titles) for keyword in progression_keywords)
-        
-        return {
-            "total_positions": len(experience),
-            "experience_quality": description_quality,
-            "progression_analysis": "Shows career growth" if has_progression else "Linear progression",
-            "description_quality": f"Average {avg_descriptions:.1f} bullet points per position",
-            "companies_with_names": sum(1 for exp in experience if exp.get('company')),
-            "positions_with_duration": sum(1 for exp in experience if exp.get('duration'))
-        }
-    
-    def _analyze_education(self, parsed_resume: Dict) -> Dict:
-        """Detailed education analysis"""
-        education = parsed_resume.get('education', [])
-        
-        if not education:
-            return {
-                "education_level": "Not specified",
-                "field_relevance": "Cannot assess",
-                "gpa_mentioned": False,
-                "institution_quality": "Not provided"
-            }
-        
-        # Determine highest degree
-        degrees = [edu.get('degree', '').lower() for edu in education]
-        degree_text = ' '.join(degrees)
-        
-        if any(keyword in degree_text for keyword in ['phd', 'ph.d', 'doctorate']):
-            education_level = "Doctorate"
-        elif any(keyword in degree_text for keyword in ['master', 'm.s', 'm.a', 'mba']):
-            education_level = "Master's"
-        elif any(keyword in degree_text for keyword in ['bachelor', 'b.s', 'b.a']):
-            education_level = "Bachelor's"
-        else:
-            education_level = "Other/Not specified"
-        
-        # Check field relevance
-        relevant_fields = ['computer', 'engineering', 'technology', 'science', 'mathematics']
-        field_relevant = any(field in degree_text for field in relevant_fields)
-        
-        # Check for GPA
-        gpa_mentioned = any(edu.get('gpa') for edu in education)
-        
-        return {
-            "education_level": education_level,
-            "field_relevance": "Relevant technical field" if field_relevant else "Non-technical field",
-            "gpa_mentioned": gpa_mentioned,
-            "institution_quality": "Institutions listed" if any(edu.get('institution') for edu in education) else "No institutions specified",
-            "total_degrees": len(education)
-        }
-    
-    def _analyze_contact_info(self, parsed_resume: Dict) -> Dict:
-        """Analyze completeness of contact information"""
-        contact = parsed_resume.get('contact_info', {})
-        
-        completeness_score = 0
-        missing_items = []
-        
-        if contact.get('email'):
-            completeness_score += 25
-        else:
-            missing_items.append('Email')
-        
-        if contact.get('phone'):
-            completeness_score += 25
-        else:
-            missing_items.append('Phone')
-        
-        if contact.get('linkedin'):
-            completeness_score += 25
-        else:
-            missing_items.append('LinkedIn profile')
-        
-        if contact.get('github'):
-            completeness_score += 25
-        else:
-            missing_items.append('GitHub profile')
-        
-        return {
-            "completeness_score": completeness_score,
-            "missing_items": missing_items,
-            "professional_presence": "Strong" if contact.get('linkedin') and contact.get('github') else "Moderate" if contact.get('linkedin') or contact.get('github') else "Weak"
-        }
-    
-    def _generate_final_recommendation(self, evaluation: Dict) -> Dict:
-        """Generate final hiring recommendation"""
-        overall_score = evaluation.get('overall_score', 0)
-        
-        if overall_score >= 80:
-            decision = "HIRE"
-            rationale = "Candidate demonstrates strong qualifications across all evaluation criteria."
-        elif overall_score >= 65:
-            decision = "INTERVIEW"
-            rationale = "Candidate shows good potential with some areas for verification in interview."
-        elif overall_score >= 50:
-            decision = "MAYBE"
-            rationale = "Candidate has basic qualifications but significant gaps need addressing."
-        else:
-            decision = "REJECT"
-            rationale = "Candidate does not meet minimum requirements for this position."
-        
-        return {
-            "decision": decision,
-            "confidence": "High" if overall_score >= 75 or overall_score <= 40 else "Medium",
-            "rationale": rationale,
-            "overall_score": overall_score
-        }
-    
-    def _suggest_next_steps(self, evaluation: Dict) -> List[str]:
-        """Suggest next steps based on evaluation"""
-        overall_score = evaluation.get('overall_score', 0)
-        next_steps = []
-        
-        if overall_score >= 65:
-            next_steps.append("Schedule initial screening interview")
-            next_steps.append("Verify technical skills through coding assessment")
-            next_steps.append("Check references from previous employers")
-        elif overall_score >= 50:
-            next_steps.append("Request additional information about experience")
-            next_steps.append("Consider for junior or training positions")
-            next_steps.append("Evaluate against other candidates in pool")
-        else:
-            next_steps.append("Send polite rejection email")
-            next_steps.append("Keep resume on file for future opportunities")
-        
-        # Add specific suggestions based on weaknesses
-        weaknesses = evaluation.get('weaknesses', [])
-        if any('technical' in weakness.lower() for weakness in weaknesses):
-            next_steps.append("If proceeding, focus technical interview on practical skills")
-        
-        if any('experience' in weakness.lower() for weakness in weaknesses):
-            next_steps.append("If proceeding, ask detailed questions about work history")
-        
-        return next_steps
+        return missing
     
     def batch_screen_resumes(self, file_paths: List[str], job_criteria: Dict = None) -> List[Dict]:
-        """Screen multiple resumes"""
+        """Screen multiple resumes using LLM analysis"""
         results = []
         
-        for file_path in file_paths:
-            logger.info(f"Processing {file_path}")
+        for i, file_path in enumerate(file_paths, 1):
+            logger.info(f"Processing {i}/{len(file_paths)}: {file_path}")
             result = self.screen_resume(file_path, job_criteria)
             results.append(result)
+            
+            # Add small delay between API calls to avoid rate limiting
+            import time
+            time.sleep(1)
         
         return results
     
-    def export_results(self, results: List[Dict], output_file: str = "screening_results.json"):
+    def compare_candidates(self, screening_results: List[Dict]) -> Dict:
+        """Compare multiple candidates using LLM analysis"""
+        if not screening_results:
+            return {"error": "No screening results provided"}
+        
+        # Extract successful results only
+        successful_results = [r for r in screening_results if r.get('success', False)]
+        
+        if not successful_results:
+            return {"error": "No successful screening results to compare"}
+        
+        try:
+            # Create comparison prompt
+            candidates_summary = []
+            for i, result in enumerate(successful_results, 1):
+                llm_analysis = result.get('llm_analysis', {})
+                scores = llm_analysis.get('scoring', {})
+                
+                candidates_summary.append(f"""
+                Candidate {i} ({result.get('file_path', 'Unknown')}):
+                - Overall Score: {scores.get('overall_score', 'N/A')}
+                - Technical Skills: {scores.get('technical_skills', 'N/A')}
+                - Experience: {scores.get('experience', 'N/A')}
+                - Decision: {llm_analysis.get('hiring_decision', {}).get('decision', 'N/A')}
+                """)
+            
+            prompt = f"""
+            Compare these candidates and provide:
+            1. Ranking from best to worst with rationale
+            2. Each candidate's unique strengths
+            3. Best fit scenarios for each candidate
+            4. Overall hiring recommendations
+            
+            CANDIDATES:
+            {''.join(candidates_summary)}
+            
+            Provide a comprehensive comparison and ranking.
+            """
+            
+            messages = [
+                SystemMessage(content="You are a senior hiring manager comparing multiple candidates for optimal team fit."),
+                HumanMessage(content=prompt)
+            ]
+            
+            response = self.analysis_tool.llm.invoke(messages)
+            
+            return {
+                "comparison_analysis": response.content,
+                "candidates_count": len(successful_results),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error comparing candidates: {str(e)}")
+            return {"error": str(e)}
+    
+    def export_results(self, results: List[Dict], output_file: str = "llm_screening_results.json"):
         """Export screening results to file"""
         try:
             with open(output_file, 'w') as f:
                 json.dump(results, f, indent=2, default=str)
             logger.info(f"Results exported to {output_file}")
+            return {"success": True, "file": output_file}
         except Exception as e:
             logger.error(f"Error exporting results: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+
+def create_llm_resume_screener_agent():
+    """Create the LLM-powered Resume Screener Agent using CrewAI"""
+    
+    # Initialize tools
+    parser_tool = ResumeParserTool()
+    analysis_tool = LLMAnalysisTool()
+    
+    # Create the agent with LLM integration
+    resume_screener = Agent(
+        role="AI-Powered Resume Screening Specialist",
+        goal="Provide intelligent, comprehensive resume analysis using advanced language models for accurate candidate evaluation",
+        backstory="""You are a next-generation AI resume screener that combines traditional parsing 
+        capabilities with advanced language model intelligence. You can understand context, nuance, 
+        and provide insights that go beyond keyword matching. Your analysis includes career trajectory 
+        assessment, skill gap identification, market competitiveness evaluation, and personalized 
+        improvement recommendations. You excel at providing detailed, actionable feedback that helps 
+        both recruiters make better hiring decisions and candidates improve their profiles.""",
+        tools=[parser_tool, analysis_tool],
+        verbose=True,
+        allow_delegation=False,
+        llm=analysis_tool.llm  # Use the same LLM instance
+    )
+    
+    return resume_screener
+
 
 def main():
-    """Example usage of the Resume Screener Agent"""
+    """Example usage of the LLM-powered Resume Screener Agent"""
+    
+    print("=" * 70)
+    print("LLM-POWERED RESUME SCREENER AGENT")
+    print("=" * 70)
+    
+    # Check for at least one provider key (OpenAI or Gemini)
+    if not os.environ.get("OPENAI_API_KEY") and not os.environ.get("GEMINI_API_KEY"):
+        print("❌ Error: No LLM API key found in environment variables")
+        print("Please add at least one to the .env file:")
+        print("OPENAI_API_KEY=your_openai_key_here")
+        print("or")
+        print("GEMINI_API_KEY=your_gemini_key_here")
+        return
     
     # Initialize the workflow
-    screener = ResumeScreenerWorkflow()
+    try:
+        screener = ResumeScreenerWorkflow()
+        print("✅ LLM-powered screener initialized successfully")
+    except Exception as e:
+        print(f"❌ Error initializing screener: {e}")
+        return
     
     # Example job criteria (optional)
     job_criteria = {
+        'position': 'Senior Software Developer',
+        'required_skills': ['Python', 'JavaScript', 'SQL', 'Git'],
+        'preferred_skills': ['React', 'AWS', 'Docker', 'Machine Learning'],
         'min_experience_years': 3,
-        'required_skills': ['Python', 'JavaScript', 'SQL'],
-        'preferred_skills': ['React', 'AWS', 'Docker'],
-        'education_level': 'bachelor',
-        'industry': 'technology'
+        'education_level': 'masters',
+        'industry': 'technology',
+        'company_size': 'startup to mid-size',
+        'remote_work': True
     }
     
-    # Screen a single resume
-    resume_path = "Nirmit_Jain_Resume_Final.pdf"  # Replace with actual path
+    # Resume path to analyze
+    resume_path = "final5resume.pdf"  
     
-    print("=" * 60)
-    print("RESUME SCREENER AGENT - PROCESSING")
-    print("=" * 60)
+    print(f"\n🔍 Analyzing resume: {resume_path}")
+    print("⏳ This may take 30-60 seconds due to LLM processing...")
     
-    # Note: You'll need to replace this with an actual file path
-    try:
-        result = screener.screen_resume(resume_path, job_criteria)
-        
-        if result['success']:
-            print(f"\n✅ Successfully screened resume: {result['file_path']}")
-            print(f"📊 Overall Score: {result['evaluation']['overall_score']}/100")
-            print(f"🎯 Recommendation: {result['screening_report']['recommendation']['decision']}")
-            
-            print("\n📋 CANDIDATE SUMMARY:")
-            summary = result['screening_report']['candidate_summary']
-            print(f"  • Email: {summary.get('email', 'N/A')}")
-            print(f"  • Experience: {summary.get('estimated_experience', 'N/A')}")
-            print(f"  • Education: {summary.get('highest_education', 'N/A')}")
-            print(f"  • Skills Count: {summary.get('total_skills_count', 0)}")
-            
-            print("\n⭐ TOP STRENGTHS:")
-            for strength in result['evaluation']['strengths'][:3]:
-                print(f"  • {strength}")
-            
-            print("\n⚠️  AREAS FOR IMPROVEMENT:")
-            for weakness in result['evaluation']['weaknesses'][:3]:
-                print(f"  • {weakness}")
-            
-            print("\n📌 NEXT STEPS:")
-            for step in result['screening_report']['next_steps'][:3]:
-                print(f"  • {step}")
-                
-        else:
-            print(f"❌ Error screening resume: {result['error']}")
-            
-    except Exception as e:
-        print(f"❌ Error: Please provide a valid resume file path")
-        print(f"Example usage:")
-        print(f"  screener = ResumeScreenerWorkflow()")
-        print(f"  result = screener.screen_resume('path/to/your/resume.pdf')")
+    # Show job criteria and process steps
+    print(f"\n📋 JOB CRITERIA:")
+    for key, value in job_criteria.items():
+        print(f"  • {key.replace('_', ' ').title()}: {value}")
+    
+    # Suppressed verbose analysis process prints
+    
+    # Run the actual screening
+    print("\n🚀 Running actual analysis...")
+    result = screener.screen_resume(resume_path, job_criteria)
+    
+    if not result.get("success"):
+        print(f"❌ Screening failed: {result.get('error', 'Unknown error')}")
+        return
+    
+    report = result.get("screening_report", {})
+    exec_summary = report.get("executive_summary", {})
+    llm_analysis = result.get("llm_analysis", {})
+    scores = llm_analysis.get("scoring", {})
+    decision = llm_analysis.get("hiring_decision", {})
+    
+    print("\n================== RESULTS ==================")
+    if scores:
+        print(f"✅ Overall Score: {scores.get('overall_score', 'N/A')}/100")
+    if decision:
+        print(f"🎯 Decision: {decision.get('decision', 'N/A')} (Confidence: {decision.get('confidence', 'N/A')})")
+    
+    overall_assessment = exec_summary.get("overall_assessment") or llm_analysis.get("overall_assessment")
+    if overall_assessment:
+        print("\n🧠 Overall Assessment:\n")
+        print(overall_assessment)
+    
+    print("\n📌 Done. Full structured output is available in the generated report object.")
+
 
 if __name__ == "__main__":
     main()
