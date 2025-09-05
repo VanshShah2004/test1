@@ -14,6 +14,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from pydantic import PrivateAttr
 import logging
 
 # Document processing libraries
@@ -32,7 +33,7 @@ from nltk.corpus import stopwords
 # CrewAI imports
 from crewai import Agent, Task, Crew, Process
 from crewai.tools import BaseTool
-from langchain_openai import OpenAI, ChatOpenAI
+# OpenAI removed per request
 try:
     from langchain_google_genai import ChatGoogleGenerativeAI
 except Exception:  # Optional dependency; fallback imported conditionally
@@ -466,43 +467,39 @@ class ResumeParserTool(BaseTool):
 class LLMAnalysisTool(BaseTool):
     name: str = "LLM Analysis"
     description: str = "Uses LLM to analyze resume content and provide intelligent insights"
-    llm: Optional[ChatOpenAI] = None
+    _llm: object = PrivateAttr(default=None)
+    
+    @property
+    def llm(self):
+        return self._llm
     
     def __init__(self, llm=None):
         # Initialize pydantic BaseModel field via super().__init__ to avoid "no field" errors
         resolved_llm = llm or self._get_default_llm()
-        super().__init__(llm=resolved_llm)
+        super().__init__()
+        self._llm = resolved_llm
         
     def _get_default_llm(self):
         """Get default LLM"""
-        # Try OpenAI first
-        openai_api_key = os.environ.get("OPENAI_API_KEY")
-        if openai_api_key:
-            try:
-                model_name = os.environ.get("OPENAI_MODEL", "gpt-4o")
-                return ChatOpenAI(
-                    temperature=0.2,
-                    model=model_name,
-                    openai_api_key=openai_api_key
-                )
-            except Exception as e:
-                logger.warning(f"OpenAI init failed, will try Gemini fallback: {e}")
-
-        # Fallback to Google Gemini (via LangChain) if available
+        # Try Gemini first (primary)
         gemini_api_key = os.environ.get("GEMINI_API_KEY")
-        if gemini_api_key and ChatGoogleGenerativeAI is not None:
+        if gemini_api_key:
             try:
-                return ChatGoogleGenerativeAI(
-                    model="gemini-1.5-pro",
-                    temperature=0.2,
-                    google_api_key=gemini_api_key
-                )
+                if ChatGoogleGenerativeAI is not None:
+                    return ChatGoogleGenerativeAI(
+                        model="gemini-1.5-pro",
+                        temperature=0.2,
+                        google_api_key=gemini_api_key
+                    )
+                else:
+                    # Fallback to direct SDK
+                    return _SimpleGeminiClient(api_key=gemini_api_key, model="gemini-1.5-pro", temperature=0.2)
             except Exception as e:
-                logger.warning(f"Gemini init failed: {e}")
+                logger.warning(f"Gemini init failed, will try OpenAI fallback: {e}")
 
         # If we get here, no provider could be initialized
         provider_hint = (
-            "Set OPENAI_API_KEY or GEMINI_API_KEY in your environment/.env."
+            "Set GEMINI_API_KEY in your environment/.env."
         )
         raise ValueError(f"No LLM provider available. {provider_hint}")
     
@@ -548,7 +545,7 @@ class LLMAnalysisTool(BaseTool):
             return None
     
     def _safe_invoke(self, messages):
-        """Invoke the LLM; on OpenAI quota/429 errors, failover to Gemini once and retry."""
+        """Invoke the LLM; on Gemini quota/429 errors, failover to Gemini Flash."""
         try:
             return self.llm.invoke(messages)
         except Exception as e:
@@ -556,30 +553,16 @@ class LLMAnalysisTool(BaseTool):
             is_quota_or_rate = (
                 '429' in err_text or 'insufficient_quota' in err_text or 'rate limit' in err_text.lower()
             )
-            # First failover: switch to Gemini Pro
+            # Failover: switch to Gemini Flash (if not already using it)
             if is_quota_or_rate:
-                gemini = self._get_gemini_llm()
-                if gemini is not None and self.llm is not gemini:
-                    logger.warning("OpenAI call failed with quota/429. Switching to Gemini and retrying once.")
-                    self.llm = gemini
-                    try:
-                        return self.llm.invoke(messages)
-                    except Exception as ge:
-                        gerr = str(ge)
-                        is_gemini_quota = '429' in gerr or 'quota' in gerr.lower()
-                        if is_gemini_quota:
-                            # Wait briefly then try flash model
-                            import time
-                            time.sleep(6)
-                            gemini_flash = self._get_gemini_flash_llm()
-                            if gemini_flash is not None:
-                                logger.warning("Gemini quota error. Switching to gemini-1.5-flash and retrying.")
-                                self.llm = gemini_flash
-                                return self.llm.invoke(messages)
-                        raise
+                gemini_flash = self._get_gemini_flash_llm()
+                if gemini_flash is not None and self.llm is not gemini_flash:
+                    logger.warning("Gemini call failed with quota/429. Switching to gemini-1.5-flash and retrying once.")
+                    self._llm = gemini_flash
+                    return self.llm.invoke(messages)
             # If not quota/rate errors or no alternative, re-raise
             raise
-    
+
     def _run(self, parsed_resume: Dict, job_criteria: Dict = None) -> Dict:
         """Analyze resume using LLM"""
         try:
@@ -1409,12 +1392,10 @@ def main():
     print("LLM-POWERED RESUME SCREENER AGENT")
     print("=" * 70)
     
-    # Check for at least one provider key (OpenAI or Gemini)
-    if not os.environ.get("OPENAI_API_KEY") and not os.environ.get("GEMINI_API_KEY"):
+    # Check for Gemini key
+    if not os.environ.get("GEMINI_API_KEY"):
         print("❌ Error: No LLM API key found in environment variables")
-        print("Please add at least one to the .env file:")
-        print("OPENAI_API_KEY=your_openai_key_here")
-        print("or")
+        print("Please add to the .env file:")
         print("GEMINI_API_KEY=your_gemini_key_here")
         return
     
