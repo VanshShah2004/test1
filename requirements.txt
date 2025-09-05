@@ -1,0 +1,10 @@
+crewai
+PyPDF2
+pdfplumber
+python-docx
+docx2txt
+pymupdf
+spacy
+nltk
+scikit-learn
+langchain
