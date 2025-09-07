@@ -1403,12 +1403,13 @@ def create_llm_resume_screener_agent():
     return resume_screener
 
 
-def main(job_description_pdf_path: str = None, resume_file_path: str = "final5resume.pdf"):
+def main(job_description_pdf_path: str = None, resume_file_path: str = "final5resume.pdf", show_header: bool = True, show_footer: bool = True):
     """Example usage of the LLM-powered Resume Screener Agent"""
     
-    print("=" * 70)
-    print("LLM-POWERED RESUME SCREENER AGENT")
-    print("=" * 70)
+    if show_header:
+        print("=" * 70)
+        print("LLM-POWERED RESUME SCREENER AGENT")
+        print("=" * 70)
     
     # Check for Gemini key
     if not os.environ.get("GEMINI_API_KEY"):
@@ -1499,7 +1500,15 @@ def main(job_description_pdf_path: str = None, resume_file_path: str = "final5re
         print("\n🧠 Overall Assessment:\n")
         print(overall_assessment)
     
-    print("\n📌 Done. Full structured output is available in the generated report object.")
+    if show_footer:
+        print("\n📌 Done. Full structured output is available in the generated report object.")
+
+    # Return scores for external ranking
+    return {
+        "resume_path": resume_path,
+        "scores": scores if scores else {},
+        "success": bool(result.get("success"))
+    }
 
 
 if __name__ == "__main__":
