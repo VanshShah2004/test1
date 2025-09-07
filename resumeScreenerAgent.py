@@ -1403,7 +1403,7 @@ def create_llm_resume_screener_agent():
     return resume_screener
 
 
-def main(job_description_pdf_path: str = None):
+def main(job_description_pdf_path: str = None, resume_file_path: str = "final5resume.pdf"):
     """Example usage of the LLM-powered Resume Screener Agent"""
     
     print("=" * 70)
@@ -1461,8 +1461,8 @@ def main(job_description_pdf_path: str = None):
         elif not parse_job_description:
             print("ℹ️  Job description parser not available, using default criteria")
     
-    # Resume path to analyze
-    resume_path = "final5resume.pdf"  
+    # Resume path to analyze (parameterized)
+    resume_path = resume_file_path  
     
     print(f"\n🔍 Analyzing resume: {resume_path}")
     print("⏳ This may take 30-60 seconds due to LLM processing...")
