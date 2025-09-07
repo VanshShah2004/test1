@@ -1,6 +1,17 @@
 import io
 import sys
+import os
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf8')
+
+# Suppress deprecation warnings from third-party libraries
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", message=".*swigvarlink.*")
+warnings.filterwarnings("ignore", message=".*swig.*")
+
+# Also suppress warnings at the system level
+os.environ['PYTHONWARNINGS'] = 'ignore::DeprecationWarning'
+
 
 import os
 from dotenv import load_dotenv
@@ -39,10 +50,17 @@ try:
 except Exception:  # Optional dependency; fallback imported conditionally
     ChatGoogleGenerativeAI = None
 
+# Import job description parser
+try:
+    from jobDescriptionParser import main as parse_job_description
+except ImportError:
+    print("Warning: jobDescriptionParser not found. Job description parsing will be disabled.")
+    parse_job_description = None
+
 # Minimal direct Gemini adapter (no LangChain dependency required)
 class _SimpleGeminiClient:
     """Lightweight adapter exposing .invoke(messages) -> object with .content for Gemini."""
-    def __init__(self, api_key: str, model: str = "gemini-1.5-pro", temperature: float = 0.2):
+    def __init__(self, api_key: str, model: str = "gemini-1.5-flash", temperature: float = 0.2):
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         self._model_name = model
@@ -487,13 +505,13 @@ class LLMAnalysisTool(BaseTool):
             try:
                 if ChatGoogleGenerativeAI is not None:
                     return ChatGoogleGenerativeAI(
-                        model="gemini-1.5-pro",
+                        model="gemini-1.5-flash",
                         temperature=0.2,
                         google_api_key=gemini_api_key
                     )
                 else:
                     # Fallback to direct SDK
-                    return _SimpleGeminiClient(api_key=gemini_api_key, model="gemini-1.5-pro", temperature=0.2)
+                    return _SimpleGeminiClient(api_key=gemini_api_key, model="gemini-1.5-flash", temperature=0.2)
             except Exception as e:
                 logger.warning(f"Gemini init failed, will try OpenAI fallback: {e}")
 
@@ -512,7 +530,7 @@ class LLMAnalysisTool(BaseTool):
         if ChatGoogleGenerativeAI is not None:
             try:
                 return ChatGoogleGenerativeAI(
-                    model="gemini-1.5-pro",
+                    model="gemini-1.5-flash",
                     temperature=0.2,
                     google_api_key=gemini_api_key
                 )
@@ -520,7 +538,7 @@ class LLMAnalysisTool(BaseTool):
                 logger.warning(f"LangChain Gemini init failed, will try direct SDK: {e}")
         # Fallback to direct Google SDK adapter
         try:
-            return _SimpleGeminiClient(api_key=gemini_api_key, model="gemini-1.5-pro", temperature=0.2)
+            return _SimpleGeminiClient(api_key=gemini_api_key, model="gemini-1.5-flash", temperature=0.2)
         except Exception as e:
             logger.warning(f"Direct Gemini SDK init failed: {e}")
         return None
@@ -1385,7 +1403,7 @@ def create_llm_resume_screener_agent():
     return resume_screener
 
 
-def main():
+def main(job_description_pdf_path: str = None):
     """Example usage of the LLM-powered Resume Screener Agent"""
     
     print("=" * 70)
@@ -1407,17 +1425,41 @@ def main():
         print(f"❌ Error initializing screener: {e}")
         return
     
-    # Example job criteria (optional)
-    job_criteria = {
-        'position': 'Senior Software Developer',
-        'required_skills': ['Python', 'JavaScript', 'SQL', 'Git'],
-        'preferred_skills': ['React', 'AWS', 'Docker', 'Machine Learning'],
-        'min_experience_years': 3,
-        'education_level': 'masters',
-        'industry': 'technology',
-        'company_size': 'startup to mid-size',
-        'remote_work': True
-    }
+    # Parse job description if provided, otherwise use default criteria
+    if job_description_pdf_path and parse_job_description:
+        print(f"\n📄 Parsing job description from: {job_description_pdf_path}")
+        try:
+            job_criteria = parse_job_description(job_description_pdf_path)
+            print("✅ Job description parsed successfully!")
+        except Exception as e:
+            print(f"❌ Error parsing job description: {e}")
+            print("🔄 Falling back to default job criteria...")
+            job_criteria = {
+                'position': 'Senior Software Developer',
+                'required_skills': ['Python', 'JavaScript', 'SQL', 'Git'],
+                'preferred_skills': ['React', 'AWS', 'Docker', 'Machine Learning'],
+                'min_experience_years': 3,
+                'education_level': 'masters',
+                'industry': 'technology',
+                'company_size': 'startup to mid-size',
+                'remote_work': True
+            }
+    else:
+        # Default job criteria (fallback)
+        job_criteria = {
+            'position': 'Senior Software Developer',
+            'required_skills': ['Python', 'JavaScript', 'SQL', 'Git'],
+            'preferred_skills': ['React', 'AWS', 'Docker', 'Machine Learning'],
+            'min_experience_years': 3,
+            'education_level': 'masters',
+            'industry': 'technology',
+            'company_size': 'startup to mid-size',
+            'remote_work': True
+        }
+        if not job_description_pdf_path:
+            print("ℹ️  No job description PDF provided, using default criteria")
+        elif not parse_job_description:
+            print("ℹ️  Job description parser not available, using default criteria")
     
     # Resume path to analyze
     resume_path = "final5resume.pdf"  
@@ -1461,4 +1503,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # You can specify a job description PDF path here
+    job_description_pdf = "Bottomline_ Intern + FTE - JD 2026 Batch.pdf"  # Update this path as needed
+    main(job_description_pdf_path=job_description_pdf)
