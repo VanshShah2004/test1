@@ -1,0 +1,43 @@
+{
+  "scoring_criteria": {
+    "technical_skills": {
+      "weight": 60,
+      "description": "Programming languages, frameworks, tools, and technical competencies"
+    },
+    "experience": {
+      "weight": 25,
+      "description": "Relevant work experience, internships, and project experience"
+    },
+    "education": {
+      "weight": 15,
+      "description": "Educational background, degrees, and academic achievements"
+    },
+    "presentation": {
+      "weight": 10,
+      "description": "Resume formatting, clarity, organization, and professionalism"
+    }
+  },
+  "additional_criteria": {
+    "certifications": {
+      "weight": 5,
+      "description": "Professional certifications and credentials"
+    },
+    "projects": {
+      "weight": 5,
+      "description": "Personal projects, open source contributions, and portfolio work"
+    },
+    "soft_skills": {
+      "weight": 5,
+      "description": "Communication, leadership, teamwork, and interpersonal skills"
+    },
+    "industry_knowledge": {
+      "weight": 5,
+      "description": "Domain-specific knowledge and industry experience"
+    }
+  },
+  "scoring_notes": {
+    "total_weight": 100,
+    "max_score_per_criteria": 100,
+    "description": "Each criteria is scored 1-100, then weighted according to the specified percentages. Weights are automatically normalized regardless of their sum. Total possible score is 100."
+  }
+}
