@@ -4,9 +4,49 @@ Main Pipeline - Uses main_orchestrator and agents with structured scoring
 """
 
 import json
+import os
 from typing import Dict, List, Any
 from main_orchestrator import run as orchestrate
 from structured_scoring_agent import StructuredScoringAgent
+from datetime import datetime
+
+
+def _ensure_output_dir(path: str = "outputs") -> str:
+    """Ensure outputs directory exists and return its path."""
+    if not os.path.isdir(path):
+        os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _flatten_scoring_result(scoring_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Flatten a single scoring_result dict for CSV/DF friendliness."""
+    flat: Dict[str, Any] = {}
+    metadata = scoring_result.get("metadata", {})
+    flat["resume_path"] = metadata.get("resume_path", "")
+    flat["job_description_path"] = metadata.get("job_description_path", "")
+    flat["total_score"] = scoring_result.get("total_score", 0)
+
+    # Per-criterion fields
+    for criterion, data in scoring_result.items():
+        if criterion in ("total_score", "metadata"):
+            continue
+        raw_score = data.get("raw_score", None)
+        weight_given = data.get("weight_given", None)
+        normalized_percentage = data.get("normalized_percentage", None)
+        weighted_contribution = data.get("weighted_contribution", None)
+        flat[f"{criterion}__raw_score"] = raw_score
+        flat[f"{criterion}__weight_given"] = weight_given
+        flat[f"{criterion}__normalized_percentage"] = normalized_percentage
+        flat[f"{criterion}__weighted_contribution"] = weighted_contribution
+
+    # Optional gap analysis if present
+    gap = scoring_result.get("gap_analysis", {})
+    if gap:
+        flat["missing_skills"] = ", ".join(gap.get("missing_skills", []))
+        flat["experience_gap_years"] = gap.get("experience_gap_years", None)
+        flat["education_gap"] = gap.get("education_gap", "")
+
+    return flat
 
 def load_criteria_from_file(criteria_file: str = None) -> Dict[str, int]:
     """Load criteria from JSON file and convert to simple weight format"""
@@ -87,6 +127,19 @@ def run_pipeline(job_pdf: str, resume_pdfs: List[str],
     print()
     
     # Process each resume with structured scoring
+    # Map resume path -> orchestrated match result (for gap analysis)
+    orchestrated_by_resume: Dict[str, Any] = {}
+    try:
+        for mr in orchestrate_results:
+            try:
+                resume_path = mr.resume.file_path
+            except Exception:
+                resume_path = None
+            if resume_path:
+                orchestrated_by_resume[resume_path] = mr
+    except Exception:
+        pass
+
     results = []
     for i, resume_pdf in enumerate(resume_pdfs, 1):
         print("*" * 70)
@@ -100,6 +153,38 @@ def run_pipeline(job_pdf: str, resume_pdfs: List[str],
             criteria_requirements=criteria_requirements
         )
         
+        # Enrich with simple gap analysis using orchestrated data
+        try:
+            if result.get("success"):
+                scoring = result["scoring_result"]
+                mr = orchestrated_by_resume.get(resume_pdf)
+                missing_skills: List[str] = []
+                experience_gap_years = None
+                education_gap = None
+                if mr is not None:
+                    job_required = set(getattr(mr.job, "required_skills", []) or [])
+                    resume_skills = set(getattr(mr.resume, "extracted_skills", []) or [])
+                    missing_skills = sorted(list(job_required - resume_skills))
+                    try:
+                        min_years = getattr(mr.job, "min_experience_years", 0) or 0
+                        got_years = getattr(mr.resume, "total_experience_years", 0.0) or 0.0
+                        experience_gap_years = max(0.0, float(min_years) - float(got_years))
+                    except Exception:
+                        experience_gap_years = None
+                    try:
+                        job_edu = (getattr(mr.job, "education_level", "") or "").lower()
+                        resume_edu = (getattr(mr.resume, "education_level", "") or "").lower()
+                        education_gap = None if resume_edu >= job_edu else f"Requires {job_edu}"
+                    except Exception:
+                        education_gap = None
+                scoring["gap_analysis"] = {
+                    "missing_skills": missing_skills,
+                    "experience_gap_years": experience_gap_years,
+                    "education_gap": education_gap
+                }
+        except Exception:
+            pass
+
         # Display results
         print(agent.format_results(result))
         results.append(result)
@@ -127,6 +212,44 @@ def run_pipeline(job_pdf: str, resume_pdfs: List[str],
     for i, (resume_path, score) in enumerate(ranked_results, 1):
         print(f"{i}. {resume_path} - {score:.1f}/100")
     
+    # Persist structured results for dashboard consumption
+    out_dir = _ensure_output_dir()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    json_path = os.path.join(out_dir, "scoring_results.json")
+    json_snap_path = os.path.join(out_dir, f"scoring_results_{timestamp}.json")
+    flat_csv_path = os.path.join(out_dir, "scoring_results_flat.csv")
+
+    try:
+        serializable = results
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(serializable, f, indent=2, ensure_ascii=False)
+        with open(json_snap_path, "w", encoding="utf-8") as f:
+            json.dump(serializable, f, indent=2, ensure_ascii=False)
+        print(f"💾 Saved JSON results → {json_path}")
+    except Exception as e:
+        print(f"⚠️  Failed to save JSON results: {e}")
+
+    # Also write a flattened CSV for quick analysis
+    try:
+        import csv
+        flattened_rows: List[Dict[str, Any]] = []
+        for r in results:
+            if r.get("success"):
+                flattened_rows.append(_flatten_scoring_result(r["scoring_result"]))
+        # Collect all keys to stabilize CSV header
+        all_keys = set()
+        for row in flattened_rows:
+            all_keys.update(row.keys())
+        fieldnames = sorted(list(all_keys))
+        with open(flat_csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in flattened_rows:
+                writer.writerow(row)
+        print(f"💾 Saved CSV results → {flat_csv_path}")
+    except Exception as e:
+        print(f"⚠️  Failed to save CSV results: {e}")
+
     return results
 
 def create_custom_criteria_example():
