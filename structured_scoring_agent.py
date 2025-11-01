@@ -10,7 +10,7 @@ from services.llm import LLMService
 from services.pdf_utils import extract_text_from_pdf
 
 class StructuredScoringAgent:
-    def __init__(self, model: str = "gemini-1.5-flash"):
+    def __init__(self, model: str = "gemini-2.0-flash-exp"):
         self.llm = LLMService(model=model)
     
     def normalize_weights(self, criteria_requirements: Dict[str, int]) -> Dict[str, float]:
@@ -126,6 +126,137 @@ Return ONLY valid JSON in this exact format:
 """
         return prompt
     
+    def create_batch_scoring_prompt(self, resumes_data: List[Dict[str, str]], 
+                                   job_description: str, 
+                                   criteria_requirements: Dict[str, int]) -> str:
+        """Create a comparative batch scoring prompt that evaluates all resumes together"""
+        
+        normalized_weights = self.normalize_weights(criteria_requirements)
+        
+        criteria_list = []
+        for criterion, weight in criteria_requirements.items():
+            normalized = normalized_weights[criterion]
+            criteria_list.append(f"  - {criterion}: weight={weight}, normalized={normalized:.1f}%")
+        
+        criteria_text = "\n".join(criteria_list)
+        
+        # Format resumes for comparison
+        resumes_section = ""
+        for i, resume_data in enumerate(resumes_data, 1):
+            resumes_section += f"""
+{'='*80}
+RESUME #{i} - File: {resume_data['resume_path']}
+{'='*80}
+{resume_data['resume_text']}
+
+"""
+        
+        # Generate example JSON structure based on actual criteria (for first resume only as example)
+        example_json_parts = []
+        if resumes_data:
+            resume_path_example = resumes_data[0]['resume_path']
+            example_json_parts.append(f'  "{resume_path_example}": {{')
+            crit_examples = []
+            total_weighted_sum = 0.0
+            for crit_key in criteria_requirements.keys():
+                weight = criteria_requirements[crit_key]
+                normalized_pct = normalized_weights[crit_key]
+                weighted_contrib = 85.0 * normalized_pct / 100.0
+                total_weighted_sum += weighted_contrib
+                crit_examples.append(f'    "{crit_key}": {{\n      "raw_score": 85,\n      "weight_given": {weight},\n      "normalized_percentage": {normalized_pct:.1f},\n      "weighted_contribution": {weighted_contrib:.2f}\n    }}')
+            example_json_parts.append(',\n'.join(crit_examples))
+            example_json_parts.append(f'    "total_score": {total_weighted_sum:.1f}')
+            example_json_parts.append('  }')
+        example_json = '{\n' + '\n'.join(example_json_parts) + '\n}'
+        
+        prompt = f"""
+You are an Expert Resume Screening Assistant with 10+ years of HR experience.
+You will evaluate MULTIPLE candidates' resumes against a job description using COMPARATIVE ANALYSIS.
+This is a BATCH EVALUATION where you can see all candidates together for RELATIVE COMPARISON.
+
+CRITICAL: COMPARATIVE SCORING APPROACH
+- You are evaluating {len(resumes_data)} candidates TOGETHER for direct comparison
+- Use RELATIVE SCORING to ensure consistency across all candidates
+- The BEST candidate in this batch should get the highest scores
+- The WEAKEST candidate should get the lowest scores
+- Scores should reflect RELATIVE QUALITY within this batch
+- This reduces hallucination and ensures fair comparison
+
+SCORING GUIDELINES:
+- Be STRICT and DISCRIMINATING in your evaluation
+- Look for CONCRETE EVIDENCE, not just keywords
+- Penalize POOR FORMATTING, MISSING INFORMATION, and VAGUE DESCRIPTIONS
+- Reward QUANTIFIED ACHIEVEMENTS, SPECIFIC TECHNOLOGIES, and CLEAR EXPERIENCE
+- COMPARE candidates to each other - better candidates should score higher
+
+SCORING SCALE (0-100) - Use RELATIVELY within this batch:
+- 90-100: EXCEPTIONAL - Top candidate(s) in this batch, exceeds requirements with clear evidence
+- 80-89:  STRONG - Above average in this batch, meets requirements well
+- 70-79:  GOOD - Average in this batch, meets basic requirements adequately
+- 60-69:  AVERAGE - Below average in this batch, partially meets requirements
+- 50-59:  BELOW AVERAGE - Weak candidate in this batch, significant gaps
+- 40-49:  POOR - Very weak candidate in this batch, major deficiencies
+- 30-39:  VERY POOR - Severely weak candidate in this batch
+- 20-29:  INSUFFICIENT - Almost no relevant qualifications
+- 10-19:  INADEQUATE - Virtually no match to requirements
+- 0-9:    UNACCEPTABLE - No relevant qualifications
+
+EVALUATION CRITERIA:
+1. TECHNICAL SKILLS: Look for specific technologies, frameworks, tools mentioned with context
+2. EXPERIENCE: Assess relevance, duration, progression, and impact of work experience
+3. EDUCATION: Consider degree relevance, institution quality, academic achievements
+4. PRESENTATION: Evaluate formatting, clarity, organization, professional appearance
+5. CAREER PROGRESSION: Look for growth, increasing responsibilities, leadership roles
+6. MARKETABILITY: Assess overall competitiveness, unique value proposition
+7. CERTIFICATIONS: Evaluate relevance, credibility, and recency of certifications
+8. PROJECTS: Assess complexity, relevance, outcomes, and technical depth
+9. SOFT SKILLS: Look for evidence of communication, teamwork, leadership
+10. INDUSTRY KNOWLEDGE: Assess domain expertise and industry-specific experience
+
+BE CRITICAL:
+- Poor formatting = automatic deduction (max 40 points)
+- Vague descriptions = significant penalty (max 50 points)
+- Missing key information = major deduction (max 30 points)
+- No quantified achievements = substantial penalty (max 50 points)
+- Irrelevant experience = low scores (max 40 points)
+- Generic skills without context = low scores (max 50 points)
+- Typos and grammatical errors = severe penalty (max 20 points)
+- Inconsistent formatting = major penalty (max 30 points)
+- Missing contact information = critical flaw (max 20 points)
+- No clear career progression = significant penalty (max 40 points)
+
+JOB DESCRIPTION:
+{job_description}
+
+CRITERIA REQUIREMENTS:
+{criteria_text}
+
+ALL RESUMES TO EVALUATE:
+{resumes_section}
+
+IMPORTANT: Return ONLY valid JSON with scores for ALL {len(resumes_data)} resumes.
+The JSON must be an object where each key is the resume path (use the exact file path shown above) and value is the scoring data.
+You MUST include ALL criteria keys: {', '.join(criteria_requirements.keys())}
+
+For each resume, calculate:
+1. raw_score (0-100) for each criterion
+2. weight_given (from criteria_requirements)
+3. normalized_percentage (automatically calculated, already shown above)
+4. weighted_contribution (raw_score * normalized_percentage / 100)
+5. total_score (sum of all weighted_contributions)
+
+Return ONLY valid JSON in this exact format (example):
+{example_json}
+
+CRITICAL: 
+- Use the EXACT resume file paths as shown in the resumes above
+- Include ALL criteria: {', '.join(criteria_requirements.keys())}
+- Each criterion must have: raw_score, weight_given, normalized_percentage, weighted_contribution
+- total_score must equal the sum of all weighted_contributions
+- Scores should reflect RELATIVE comparison within this batch
+"""
+        return prompt
+    
     def parse_llm_response(self, response: str) -> Dict[str, Any]:
         """Parse LLM response and extract JSON"""
         try:
@@ -144,7 +275,7 @@ Return ONLY valid JSON in this exact format:
     
     def score_resume(self, resume_path: str, job_description_path: str, 
                     criteria_requirements: Dict[str, int]) -> Dict[str, Any]:
-        """Main scoring function"""
+        """Main scoring function (single resume - kept for backward compatibility)"""
         
         # Extract text from PDFs
         try:
@@ -201,6 +332,145 @@ Return ONLY valid JSON in this exact format:
                 "resume_path": resume_path,
                 "job_description_path": job_description_path
             }
+    
+    def score_resumes_batch(self, resume_paths: List[str], job_description_path: str,
+                           criteria_requirements: Dict[str, int]) -> List[Dict[str, Any]]:
+        """Batch scoring function - scores all resumes together for comparative evaluation"""
+        
+        print(f"🔄 Extracting text from {len(resume_paths)} resumes and job description...")
+        
+        # Extract text from all resumes and job description
+        resumes_data = []
+        failed_extractions = []
+        
+        for resume_path in resume_paths:
+            try:
+                resume_text = extract_text_from_pdf(resume_path)
+                resumes_data.append({
+                    "resume_path": resume_path,
+                    "resume_text": resume_text
+                })
+            except Exception as e:
+                print(f"⚠️  Failed to extract text from {resume_path}: {e}")
+                failed_extractions.append(resume_path)
+        
+        if not resumes_data:
+            return [{
+                "success": False,
+                "error": "Failed to extract text from all resumes",
+                "resume_path": rp
+            } for rp in resume_paths]
+        
+        # Extract job description
+        try:
+            job_description_text = extract_text_from_pdf(job_description_path)
+        except Exception as e:
+            return [{
+                "success": False,
+                "error": f"Error extracting job description: {e}",
+                "resume_path": rp
+            } for rp in resume_paths]
+        
+        print(f"✅ Successfully extracted text from {len(resumes_data)} resumes")
+        print(f"🔄 Sending batch evaluation to LLM (comparative scoring)...")
+        
+        # Create batch prompt
+        prompt = self.create_batch_scoring_prompt(resumes_data, job_description_text, criteria_requirements)
+        
+        # Get LLM response
+        try:
+            system_prompt = """You are a Senior HR Manager with 15+ years of experience in technical recruitment. 
+            You are conducting a COMPARATIVE BATCH EVALUATION of multiple candidates.
+            You are known for being extremely critical and discerning in resume evaluation. 
+            You have high standards and do not give high scores easily. 
+            You penalize poor formatting, vague descriptions, and lack of concrete evidence.
+            You reward only truly exceptional candidates with high scores.
+            You MUST score candidates RELATIVELY - comparing them to each other in this batch.
+            Return only valid JSON as requested, with scores for ALL resumes."""
+            
+            response = self.llm.generate(system_prompt, prompt)
+            
+            # Parse response
+            batch_result = self.parse_llm_response(response)
+            
+            if batch_result is None:
+                print(f"❌ Failed to parse LLM batch response")
+                print(f"Response preview: {response[:500]}...")
+                # Fallback to individual scoring
+                return self._fallback_individual_scoring(resume_paths, job_description_path, criteria_requirements)
+            
+            print(f"✅ Successfully parsed batch scoring results")
+            
+            # Convert batch result to individual results format
+            results = []
+            normalized_weights = self.normalize_weights(criteria_requirements)
+            
+            for resume_path in resume_paths:
+                if resume_path in failed_extractions:
+                    results.append({
+                        "success": False,
+                        "error": "Failed to extract text from PDF",
+                        "resume_path": resume_path,
+                        "job_description_path": job_description_path
+                    })
+                    continue
+                
+                # Find matching result in batch response
+                scoring_data = None
+                
+                # Try exact path match first
+                if resume_path in batch_result:
+                    scoring_data = batch_result[resume_path]
+                else:
+                    # Try to find by filename
+                    import os
+                    filename = os.path.basename(resume_path)
+                    for key, value in batch_result.items():
+                        if filename in key or key in resume_path:
+                            scoring_data = value
+                            break
+                
+                if scoring_data is None:
+                    # If we still can't find it, create error result
+                    results.append({
+                        "success": False,
+                        "error": f"Resume not found in batch response. Available keys: {list(batch_result.keys())}",
+                        "resume_path": resume_path,
+                        "job_description_path": job_description_path
+                    })
+                    continue
+                
+                # Add metadata to scoring data
+                scoring_data["metadata"] = {
+                    "resume_path": resume_path,
+                    "job_description_path": job_description_path,
+                    "criteria_requirements": criteria_requirements,
+                    "normalized_weights": normalized_weights,
+                    "scoring_method": "batch_comparative"
+                }
+                
+                results.append({
+                    "success": True,
+                    "scoring_result": scoring_data
+                })
+            
+            return results
+            
+        except Exception as e:
+            print(f"❌ Error in batch scoring: {e}")
+            print(f"Falling back to individual scoring...")
+            # Fallback to individual scoring
+            return self._fallback_individual_scoring(resume_paths, job_description_path, criteria_requirements)
+    
+    def _fallback_individual_scoring(self, resume_paths: List[str], job_description_path: str,
+                                     criteria_requirements: Dict[str, int]) -> List[Dict[str, Any]]:
+        """Fallback to individual scoring if batch scoring fails"""
+        print("⚠️  Using fallback: individual scoring (sequential)")
+        results = []
+        for resume_path in resume_paths:
+            result = self.score_resume(resume_path, job_description_path, criteria_requirements)
+            results.append(result)
+        return results
     
     def format_results(self, result: Dict[str, Any]) -> str:
         """Format results for display"""

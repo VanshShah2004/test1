@@ -5,11 +5,18 @@ Main Pipeline - Uses main_orchestrator and agents with structured scoring
 
 import json
 import os
+import sys
 from typing import Dict, List, Any
 from main_orchestrator import run as orchestrate
 from structured_scoring_agent import StructuredScoringAgent
 from datetime import datetime
-import time
+
+# Fix Windows console encoding for emoji/unicode output
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
 
 def _ensure_output_dir(path: str = "outputs") -> str:
     """Ensure outputs directory exists and return its path."""
@@ -140,18 +147,30 @@ def run_pipeline(job_pdf: str, resume_pdfs: List[str],
     except Exception:
         pass
 
-    results = []
-    for i, resume_pdf in enumerate(resume_pdfs, 1):
-        print("*" * 70)
-        print(f"PROCESSING RESUME {i}/{len(resume_pdfs)}: {resume_pdf}")
-        print("*" * 70)
-        
-        # Score resume
-        result = agent.score_resume(
-            resume_path=resume_pdf,
-            job_description_path=job_pdf,
-            criteria_requirements=criteria_requirements
-        )
+    # Use batch scoring for comparative evaluation
+    print("*" * 70)
+    print(f"BATCH COMPARATIVE EVALUATION: Processing {len(resume_pdfs)} resumes together")
+    print("*" * 70)
+    print("📊 This approach reduces hallucination by enabling relative comparison")
+    print("   All resumes are evaluated in a single LLM call for consistency")
+    print()
+    
+    # Score all resumes together using batch method
+    results = agent.score_resumes_batch(
+        resume_paths=resume_pdfs,
+        job_description_path=job_pdf,
+        criteria_requirements=criteria_requirements
+    )
+    
+    # Enrich with gap analysis using orchestrated data
+    print("\n" + "=" * 70)
+    print("INDIVIDUAL RESULTS")
+    print("=" * 70)
+    
+    for i, result in enumerate(results, 1):
+        resume_pdf = resume_pdfs[i-1]
+        print(f"\n📄 RESUME {i}/{len(resume_pdfs)}: {resume_pdf}")
+        print("-" * 70)
         
         # Enrich with simple gap analysis using orchestrated data
         try:
@@ -187,7 +206,6 @@ def run_pipeline(job_pdf: str, resume_pdfs: List[str],
 
         # Display results
         print(agent.format_results(result))
-        results.append(result)
     
     # Final ranking
     print("\n" + "=" * 70)

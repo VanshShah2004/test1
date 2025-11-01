@@ -19,6 +19,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from datetime import datetime
 
 
 OUTPUT_JSON = os.path.join("outputs", "scoring_results.json")
@@ -31,6 +32,14 @@ def load_results(path: str) -> List[Dict[str, Any]]:
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     return data
+
+
+def get_file_last_updated(path: str) -> str:
+    try:
+        ts = os.path.getmtime(path)
+        return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return "Unknown"
 
 
 def results_to_long_df(results: List[Dict[str, Any]]) -> pd.DataFrame:
@@ -318,7 +327,22 @@ def main():
         st.header("Data")
         st.write("Pipeline output path:")
         st.code(OUTPUT_JSON, language="text")
-        refresh = st.button("Refresh data")
+        last_updated = get_file_last_updated(OUTPUT_JSON)
+        st.caption(f"Last updated: {last_updated}")
+        colr1, colr2 = st.columns(2)
+        with colr1:
+            refresh = st.button("Refresh data")
+        with colr2:
+            auto = st.toggle("Auto-refresh", value=False, help="Reload when file changes")
+
+    # Detect file changes and auto-refresh
+    current_sig = os.path.getmtime(OUTPUT_JSON) if os.path.exists(OUTPUT_JSON) else 0
+    previous_sig = st.session_state.get("_file_sig", None)
+    if auto and previous_sig is not None and current_sig != previous_sig:
+        load_results.clear()
+        st.session_state["_file_sig"] = current_sig
+        st.experimental_rerun()
+    st.session_state["_file_sig"] = current_sig
 
     results = load_results(OUTPUT_JSON)
     if refresh:
@@ -358,13 +382,13 @@ def main():
     )
     if sort_mode == "job weight":
         order = (
-            filtered.groupby("criterion", as_index=False)["job_required_weight"].mean().sort_values("job_required_weight", ascending=False)[
+            filtered.groupby("criterion", as_index=False, observed=False)["job_required_weight"].mean().sort_values("job_required_weight", ascending=False)[
                 "criterion"
             ].tolist()
         )
     else:
         order = (
-            filtered.groupby("criterion")["raw_score"].agg(lambda s: s.max() - s.min()).sort_values(ascending=False).index.tolist()
+            filtered.groupby("criterion", observed=False)["raw_score"].agg(lambda s: s.max() - s.min()).sort_values(ascending=False).index.tolist()
         )
     filtered["criterion"] = pd.Categorical(filtered["criterion"], categories=order, ordered=True)
 
@@ -388,7 +412,7 @@ def main():
             if len(selected_candidates) == 1:
                 render_pie_chart(filtered[filtered["candidate"] == selected_candidates[0]])
             else:
-                agg = filtered.groupby("criterion", as_index=False)["weighted_contribution"].sum()
+                agg = filtered.groupby("criterion", as_index=False, observed=False)["weighted_contribution"].sum()
                 st.subheader("Aggregate Contribution (Selected Candidates)")
                 fig = px.pie(
                     agg,
