@@ -23,7 +23,22 @@ class JobDescriptionParserAgent:
         content = self._llm.generate(system, prompt).strip()
         if content.startswith("```json"):
             content = content.replace("```json", "").replace("```", "").strip()
-        data: Dict = json.loads(content)
-        return JobCriteria(**data)
+        try:
+            data: Dict = json.loads(content)
+        except json.JSONDecodeError:
+            # Fallback if JSON parsing fails
+            data = {}
+        
+        # Ensure all required fields have default values (never None)
+        return JobCriteria(
+            position=data.get("position", "Unknown Position"),
+            required_skills=data.get("required_skills", []),
+            preferred_skills=data.get("preferred_skills", []),
+            min_experience_years=data.get("min_experience_years", 0),
+            education_level=data.get("education_level", "bachelors"),
+            industry=data.get("industry", "general"),
+            company_size=data.get("company_size", "medium"),
+            remote_work=data.get("remote_work", False)
+        )
 
 

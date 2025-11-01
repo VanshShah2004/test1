@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Main Pipeline - Uses main_orchestrator and agents with structured scoring
+test  feature-slm branch commit
 """
 
 import json
@@ -9,6 +10,7 @@ import sys
 from typing import Dict, List, Any
 from main_orchestrator import run as orchestrate
 from structured_scoring_agent import StructuredScoringAgent
+from agents.dual_model_scoring_service import DualModelScoringService
 from datetime import datetime
 
 # Fix Windows console encoding for emoji/unicode output
@@ -122,8 +124,10 @@ def run_pipeline(job_pdf: str, resume_pdfs: List[str],
                 "marketability": 10
             }
     
-    # Initialize structured scoring agent
-    agent = StructuredScoringAgent()
+    # Initialize dual-model scoring service (LLM + SLM consensus)
+    dual_scorer = DualModelScoringService()
+    # Keep StructuredScoringAgent for formatting results
+    formatting_agent = StructuredScoringAgent()
     
     # Show criteria summary
     total_weight = sum(criteria_requirements.values())
@@ -147,16 +151,16 @@ def run_pipeline(job_pdf: str, resume_pdfs: List[str],
     except Exception:
         pass
 
-    # Use batch scoring for comparative evaluation
+    # Use dual-model scoring (LLM + SLM consensus)
     print("*" * 70)
-    print(f"BATCH COMPARATIVE EVALUATION: Processing {len(resume_pdfs)} resumes together")
+    print(f"DUAL-MODEL SCORING: Processing {len(resume_pdfs)} resumes")
     print("*" * 70)
-    print("📊 This approach reduces hallucination by enabling relative comparison")
-    print("   All resumes are evaluated in a single LLM call for consistency")
+    print("📊 Using LLM (65%) + SLM (35%) consensus with automatic fallback")
+    print("   LLM: Complex reasoning | SLM: Deterministic, rule-based")
     print()
     
-    # Score all resumes together using batch method
-    results = agent.score_resumes_batch(
+    # Score all resumes using dual-model approach (batch processing)
+    results = dual_scorer.score_resumes_batch(
         resume_paths=resume_pdfs,
         job_description_path=job_pdf,
         criteria_requirements=criteria_requirements
@@ -204,8 +208,30 @@ def run_pipeline(job_pdf: str, resume_pdfs: List[str],
         except Exception:
             pass
 
-        # Display results
-        print(agent.format_results(result))
+        # Display results (use formatting_agent for display, or create custom formatter)
+        # For dual-model results, we need a custom formatter or adapt the existing one
+        if result.get("success"):
+            scoring = result["scoring_result"]
+            metadata = scoring.get("metadata", {})
+            
+            # Check if it's dual-model or fallback
+            scoring_method = metadata.get("scoring_method", "unknown")
+            use_fallback = metadata.get("use_fallback", False)
+            
+            if use_fallback:
+                print("⚠️  FALLBACK MODE: Using 100% SLM (LLM unavailable)")
+            elif scoring_method == "dual_model_consensus":
+                print("✅ DUAL-MODEL MODE: LLM + SLM consensus")
+            
+            # Use existing formatter (it will work for the scoring_result structure)
+            # Create a compatible format
+            compatible_result = {
+                "success": True,
+                "scoring_result": scoring
+            }
+            print(formatting_agent.format_results(compatible_result))
+        else:
+            print(f"❌ Error: {result.get('error', 'Unknown error')}")
     
     # Final ranking
     print("\n" + "=" * 70)
@@ -218,7 +244,9 @@ def run_pipeline(job_pdf: str, resume_pdfs: List[str],
         if result.get("success"):
             scoring = result["scoring_result"]
             total_score = scoring.get("total_score", 0)
-            resume_path = result["scoring_result"]["metadata"]["resume_path"]
+            metadata = scoring.get("metadata", {})
+            # Get resume path from metadata (might be in different locations)
+            resume_path = metadata.get("resume_path") or result.get("resume_path") or resume_pdfs[i]
             ranked_results.append((resume_path, total_score))
         else:
             ranked_results.append((resume_pdfs[i], 0))

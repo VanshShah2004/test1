@@ -3,57 +3,264 @@
     "success": true,
     "scoring_result": {
       "technical_skills": {
-        "raw_score": 88,
+        "raw_score": 78,
+        "llm_score": 88,
+        "slm_score": 60,
         "weight_given": 60,
-        "normalized_percentage": 36.4,
-        "weighted_contribution": 32.03
+        "normalized_percentage": 36.36363636363637,
+        "weighted_contribution": 28.36,
+        "discrepancy": 28,
+        "flagged": true
       },
       "experience": {
-        "raw_score": 85,
+        "raw_score": 69,
+        "llm_score": 82,
+        "slm_score": 46,
         "weight_given": 60,
-        "normalized_percentage": 36.4,
-        "weighted_contribution": 30.91
+        "normalized_percentage": 36.36363636363637,
+        "weighted_contribution": 25.09,
+        "discrepancy": 36,
+        "flagged": true
       },
       "education": {
         "raw_score": 90,
+        "llm_score": 90,
+        "slm_score": 90,
         "weight_given": 15,
-        "normalized_percentage": 9.1,
-        "weighted_contribution": 8.19
+        "normalized_percentage": 9.090909090909092,
+        "weighted_contribution": 8.18,
+        "discrepancy": 0,
+        "flagged": false
       },
       "presentation": {
-        "raw_score": 80,
+        "raw_score": 66,
+        "llm_score": 85,
+        "slm_score": 30,
         "weight_given": 10,
-        "normalized_percentage": 6.1,
-        "weighted_contribution": 4.88
+        "normalized_percentage": 6.0606060606060606,
+        "weighted_contribution": 4.0,
+        "discrepancy": 55,
+        "flagged": true
       },
       "certifications": {
-        "raw_score": 75,
+        "raw_score": 59,
+        "llm_score": 75,
+        "slm_score": 30,
         "weight_given": 5,
-        "normalized_percentage": 3.0,
-        "weighted_contribution": 2.25
+        "normalized_percentage": 3.0303030303030303,
+        "weighted_contribution": 1.79,
+        "discrepancy": 45,
+        "flagged": true
       },
       "projects": {
-        "raw_score": 78,
+        "raw_score": 61,
+        "llm_score": 78,
+        "slm_score": 30,
         "weight_given": 5,
-        "normalized_percentage": 3.0,
-        "weighted_contribution": 2.34
+        "normalized_percentage": 3.0303030303030303,
+        "weighted_contribution": 1.85,
+        "discrepancy": 48,
+        "flagged": true
       },
       "soft_skills": {
-        "raw_score": 82,
+        "raw_score": 68,
+        "llm_score": 85,
+        "slm_score": 35,
         "weight_given": 5,
-        "normalized_percentage": 3.0,
-        "weighted_contribution": 2.46
+        "normalized_percentage": 3.0303030303030303,
+        "weighted_contribution": 2.06,
+        "discrepancy": 50,
+        "flagged": true
+      },
+      "industry_knowledge": {
+        "raw_score": 63,
+        "llm_score": 70,
+        "slm_score": 50,
+        "weight_given": 5,
+        "normalized_percentage": 3.0303030303030303,
+        "weighted_contribution": 1.91,
+        "discrepancy": 20,
+        "flagged": false
+      },
+      "total_score": 73.2,
+      "llm_total": 84.5,
+      "slm_total": 52.9,
+      "metadata": {
+        "scoring_method": "dual_model_consensus",
+        "llm_weight": 0.65,
+        "slm_weight": 0.35,
+        "use_fallback": false,
+        "criteria_requirements": {
+          "technical_skills": 60,
+          "experience": 60,
+          "education": 15,
+          "presentation": 10,
+          "certifications": 5,
+          "projects": 5,
+          "soft_skills": 5,
+          "industry_knowledge": 5
+        },
+        "normalized_weights": {
+          "technical_skills": 36.36363636363637,
+          "experience": 36.36363636363637,
+          "education": 9.090909090909092,
+          "presentation": 6.0606060606060606,
+          "certifications": 3.0303030303030303,
+          "projects": 3.0303030303030303,
+          "soft_skills": 3.0303030303030303,
+          "industry_knowledge": 3.0303030303030303
+        },
+        "llm_metadata": {
+          "resume_path": "documents/final5resume.pdf",
+          "job_description_path": "documents/Bottomline_ Intern + FTE - JD 2026 Batch.pdf",
+          "criteria_requirements": {
+            "technical_skills": 60,
+            "experience": 60,
+            "education": 15,
+            "presentation": 10,
+            "certifications": 5,
+            "projects": 5,
+            "soft_skills": 5,
+            "industry_knowledge": 5
+          },
+          "normalized_weights": {
+            "technical_skills": 36.36363636363637,
+            "experience": 36.36363636363637,
+            "education": 9.090909090909092,
+            "presentation": 6.0606060606060606,
+            "certifications": 3.0303030303030303,
+            "projects": 3.0303030303030303,
+            "soft_skills": 3.0303030303030303,
+            "industry_knowledge": 3.0303030303030303
+          },
+          "scoring_method": "batch_comparative"
+        },
+        "resume_path": "documents/final5resume.pdf",
+        "job_description_path": "documents/Bottomline_ Intern + FTE - JD 2026 Batch.pdf",
+        "slm_metadata": {
+          "resume_path": "documents/final5resume.pdf",
+          "job_description_path": "documents/Bottomline_ Intern + FTE - JD 2026 Batch.pdf",
+          "criteria_requirements": {
+            "technical_skills": 60,
+            "experience": 60,
+            "education": 15,
+            "presentation": 10,
+            "certifications": 5,
+            "projects": 5,
+            "soft_skills": 5,
+            "industry_knowledge": 5
+          },
+          "normalized_weights": {
+            "technical_skills": 36.36363636363637,
+            "experience": 36.36363636363637,
+            "education": 9.090909090909092,
+            "presentation": 6.0606060606060606,
+            "certifications": 3.0303030303030303,
+            "projects": 3.0303030303030303,
+            "soft_skills": 3.0303030303030303,
+            "industry_knowledge": 3.0303030303030303
+          },
+          "scoring_method": "nlp_slm"
+        }
+      },
+      "gap_analysis": {
+        "missing_skills": [],
+        "experience_gap_years": null,
+        "education_gap": null
+      }
+    }
+  },
+  {
+    "success": true,
+    "scoring_result": {
+      "technical_skills": {
+        "raw_score": 76,
+        "llm_score": 95,
+        "slm_score": 40,
+        "weight_given": 60,
+        "normalized_percentage": 36.36363636363637,
+        "weighted_contribution": 27.64,
+        "discrepancy": 55,
+        "flagged": true
+      },
+      "experience": {
+        "raw_score": 67,
+        "llm_score": 92,
+        "slm_score": 20,
+        "weight_given": 60,
+        "normalized_percentage": 36.36363636363637,
+        "weighted_contribution": 24.36,
+        "discrepancy": 72,
+        "flagged": true
+      },
+      "education": {
+        "raw_score": 91,
+        "llm_score": 92,
+        "slm_score": 90,
+        "weight_given": 15,
+        "normalized_percentage": 9.090909090909092,
+        "weighted_contribution": 8.27,
+        "discrepancy": 2,
+        "flagged": false
+      },
+      "presentation": {
+        "raw_score": 69,
+        "llm_score": 90,
+        "slm_score": 30,
+        "weight_given": 10,
+        "normalized_percentage": 6.0606060606060606,
+        "weighted_contribution": 4.18,
+        "discrepancy": 60,
+        "flagged": true
+      },
+      "certifications": {
+        "raw_score": 50,
+        "llm_score": 60,
+        "slm_score": 30,
+        "weight_given": 5,
+        "normalized_percentage": 3.0303030303030303,
+        "weighted_contribution": 1.52,
+        "discrepancy": 30,
+        "flagged": true
+      },
+      "projects": {
+        "raw_score": 69,
+        "llm_score": 90,
+        "slm_score": 30,
+        "weight_given": 5,
+        "normalized_percentage": 3.0303030303030303,
+        "weighted_contribution": 2.09,
+        "discrepancy": 60,
+        "flagged": true
+      },
+      "soft_skills": {
+        "raw_score": 71,
+        "llm_score": 90,
+        "slm_score": 35,
+        "weight_given": 5,
+        "normalized_percentage": 3.0303030303030303,
+        "weighted_contribution": 2.15,
+        "discrepancy": 55,
+        "flagged": true
       },
       "industry_knowledge": {
         "raw_score": 70,
+        "llm_score": 80,
+        "slm_score": 50,
         "weight_given": 5,
-        "normalized_percentage": 3.0,
-        "weighted_contribution": 2.1
+        "normalized_percentage": 3.0303030303030303,
+        "weighted_contribution": 2.12,
+        "discrepancy": 30,
+        "flagged": true
       },
-      "total_score": 85.16,
+      "total_score": 72.3,
+      "llm_total": 91.53,
+      "slm_total": 36.2,
       "metadata": {
-        "resume_path": "documents/final5resume.pdf",
-        "job_description_path": "documents/Bottomline_ Intern + FTE - JD 2026 Batch.pdf",
+        "scoring_method": "dual_model_consensus",
+        "llm_weight": 0.65,
+        "slm_weight": 0.35,
+        "use_fallback": false,
         "criteria_requirements": {
           "technical_skills": 60,
           "experience": 60,
@@ -74,91 +281,58 @@
           "soft_skills": 3.0303030303030303,
           "industry_knowledge": 3.0303030303030303
         },
-        "scoring_method": "batch_comparative"
-      },
-      "gap_analysis": {
-        "missing_skills": [],
-        "experience_gap_years": null,
-        "education_gap": null
-      }
-    }
-  },
-  {
-    "success": true,
-    "scoring_result": {
-      "technical_skills": {
-        "raw_score": 95,
-        "weight_given": 60,
-        "normalized_percentage": 36.4,
-        "weighted_contribution": 34.58
-      },
-      "experience": {
-        "raw_score": 92,
-        "weight_given": 60,
-        "normalized_percentage": 36.4,
-        "weighted_contribution": 33.49
-      },
-      "education": {
-        "raw_score": 95,
-        "weight_given": 15,
-        "normalized_percentage": 9.1,
-        "weighted_contribution": 8.65
-      },
-      "presentation": {
-        "raw_score": 90,
-        "weight_given": 10,
-        "normalized_percentage": 6.1,
-        "weighted_contribution": 5.49
-      },
-      "certifications": {
-        "raw_score": 40,
-        "weight_given": 5,
-        "normalized_percentage": 3.0,
-        "weighted_contribution": 1.2
-      },
-      "projects": {
-        "raw_score": 90,
-        "weight_given": 5,
-        "normalized_percentage": 3.0,
-        "weighted_contribution": 2.7
-      },
-      "soft_skills": {
-        "raw_score": 90,
-        "weight_given": 5,
-        "normalized_percentage": 3.0,
-        "weighted_contribution": 2.7
-      },
-      "industry_knowledge": {
-        "raw_score": 85,
-        "weight_given": 5,
-        "normalized_percentage": 3.0,
-        "weighted_contribution": 2.55
-      },
-      "total_score": 91.36,
-      "metadata": {
+        "llm_metadata": {
+          "resume_path": "documents/Nirmit_Jain_Resume_Final.pdf",
+          "job_description_path": "documents/Bottomline_ Intern + FTE - JD 2026 Batch.pdf",
+          "criteria_requirements": {
+            "technical_skills": 60,
+            "experience": 60,
+            "education": 15,
+            "presentation": 10,
+            "certifications": 5,
+            "projects": 5,
+            "soft_skills": 5,
+            "industry_knowledge": 5
+          },
+          "normalized_weights": {
+            "technical_skills": 36.36363636363637,
+            "experience": 36.36363636363637,
+            "education": 9.090909090909092,
+            "presentation": 6.0606060606060606,
+            "certifications": 3.0303030303030303,
+            "projects": 3.0303030303030303,
+            "soft_skills": 3.0303030303030303,
+            "industry_knowledge": 3.0303030303030303
+          },
+          "scoring_method": "batch_comparative"
+        },
         "resume_path": "documents/Nirmit_Jain_Resume_Final.pdf",
         "job_description_path": "documents/Bottomline_ Intern + FTE - JD 2026 Batch.pdf",
-        "criteria_requirements": {
-          "technical_skills": 60,
-          "experience": 60,
-          "education": 15,
-          "presentation": 10,
-          "certifications": 5,
-          "projects": 5,
-          "soft_skills": 5,
-          "industry_knowledge": 5
-        },
-        "normalized_weights": {
-          "technical_skills": 36.36363636363637,
-          "experience": 36.36363636363637,
-          "education": 9.090909090909092,
-          "presentation": 6.0606060606060606,
-          "certifications": 3.0303030303030303,
-          "projects": 3.0303030303030303,
-          "soft_skills": 3.0303030303030303,
-          "industry_knowledge": 3.0303030303030303
-        },
-        "scoring_method": "batch_comparative"
+        "slm_metadata": {
+          "resume_path": "documents/Nirmit_Jain_Resume_Final.pdf",
+          "job_description_path": "documents/Bottomline_ Intern + FTE - JD 2026 Batch.pdf",
+          "criteria_requirements": {
+            "technical_skills": 60,
+            "experience": 60,
+            "education": 15,
+            "presentation": 10,
+            "certifications": 5,
+            "projects": 5,
+            "soft_skills": 5,
+            "industry_knowledge": 5
+          },
+          "normalized_weights": {
+            "technical_skills": 36.36363636363637,
+            "experience": 36.36363636363637,
+            "education": 9.090909090909092,
+            "presentation": 6.0606060606060606,
+            "certifications": 3.0303030303030303,
+            "projects": 3.0303030303030303,
+            "soft_skills": 3.0303030303030303,
+            "industry_knowledge": 3.0303030303030303
+          },
+          "scoring_method": "nlp_slm"
+        }
       },
       "gap_analysis": {
         "missing_skills": [],
@@ -171,57 +345,93 @@
     "success": true,
     "scoring_result": {
       "technical_skills": {
-        "raw_score": 87,
+        "raw_score": 76,
+        "llm_score": 85,
+        "slm_score": 60,
         "weight_given": 60,
-        "normalized_percentage": 36.4,
-        "weighted_contribution": 31.61
+        "normalized_percentage": 36.36363636363637,
+        "weighted_contribution": 27.64,
+        "discrepancy": 25,
+        "flagged": true
       },
       "experience": {
-        "raw_score": 84,
+        "raw_score": 68,
+        "llm_score": 80,
+        "slm_score": 46,
         "weight_given": 60,
-        "normalized_percentage": 36.4,
-        "weighted_contribution": 30.5
+        "normalized_percentage": 36.36363636363637,
+        "weighted_contribution": 24.73,
+        "discrepancy": 34,
+        "flagged": true
       },
       "education": {
         "raw_score": 89,
+        "llm_score": 88,
+        "slm_score": 90,
         "weight_given": 15,
-        "normalized_percentage": 9.1,
-        "weighted_contribution": 8.09
+        "normalized_percentage": 9.090909090909092,
+        "weighted_contribution": 8.09,
+        "discrepancy": 2,
+        "flagged": false
       },
       "presentation": {
-        "raw_score": 75,
+        "raw_score": 59,
+        "llm_score": 75,
+        "slm_score": 30,
         "weight_given": 10,
-        "normalized_percentage": 6.1,
-        "weighted_contribution": 4.58
+        "normalized_percentage": 6.0606060606060606,
+        "weighted_contribution": 3.58,
+        "discrepancy": 45,
+        "flagged": true
       },
       "certifications": {
-        "raw_score": 70,
+        "raw_score": 56,
+        "llm_score": 70,
+        "slm_score": 30,
         "weight_given": 5,
-        "normalized_percentage": 3.0,
-        "weighted_contribution": 2.1
+        "normalized_percentage": 3.0303030303030303,
+        "weighted_contribution": 1.7,
+        "discrepancy": 40,
+        "flagged": true
       },
       "projects": {
-        "raw_score": 75,
+        "raw_score": 59,
+        "llm_score": 75,
+        "slm_score": 30,
         "weight_given": 5,
-        "normalized_percentage": 3.0,
-        "weighted_contribution": 2.25
+        "normalized_percentage": 3.0303030303030303,
+        "weighted_contribution": 1.79,
+        "discrepancy": 45,
+        "flagged": true
       },
       "soft_skills": {
-        "raw_score": 80,
+        "raw_score": 64,
+        "llm_score": 80,
+        "slm_score": 35,
         "weight_given": 5,
-        "normalized_percentage": 3.0,
-        "weighted_contribution": 2.4
+        "normalized_percentage": 3.0303030303030303,
+        "weighted_contribution": 1.94,
+        "discrepancy": 45,
+        "flagged": true
       },
       "industry_knowledge": {
-        "raw_score": 65,
+        "raw_score": 60,
+        "llm_score": 65,
+        "slm_score": 50,
         "weight_given": 5,
-        "normalized_percentage": 3.0,
-        "weighted_contribution": 1.95
+        "normalized_percentage": 3.0303030303030303,
+        "weighted_contribution": 1.82,
+        "discrepancy": 15,
+        "flagged": false
       },
-      "total_score": 83.5,
+      "total_score": 71.3,
+      "llm_total": 81.32,
+      "slm_total": 52.9,
       "metadata": {
-        "resume_path": "documents/final4resume.pdf",
-        "job_description_path": "documents/Bottomline_ Intern + FTE - JD 2026 Batch.pdf",
+        "scoring_method": "dual_model_consensus",
+        "llm_weight": 0.65,
+        "slm_weight": 0.35,
+        "use_fallback": false,
         "criteria_requirements": {
           "technical_skills": 60,
           "experience": 60,
@@ -242,7 +452,58 @@
           "soft_skills": 3.0303030303030303,
           "industry_knowledge": 3.0303030303030303
         },
-        "scoring_method": "batch_comparative"
+        "llm_metadata": {
+          "resume_path": "documents/final4resume.pdf",
+          "job_description_path": "documents/Bottomline_ Intern + FTE - JD 2026 Batch.pdf",
+          "criteria_requirements": {
+            "technical_skills": 60,
+            "experience": 60,
+            "education": 15,
+            "presentation": 10,
+            "certifications": 5,
+            "projects": 5,
+            "soft_skills": 5,
+            "industry_knowledge": 5
+          },
+          "normalized_weights": {
+            "technical_skills": 36.36363636363637,
+            "experience": 36.36363636363637,
+            "education": 9.090909090909092,
+            "presentation": 6.0606060606060606,
+            "certifications": 3.0303030303030303,
+            "projects": 3.0303030303030303,
+            "soft_skills": 3.0303030303030303,
+            "industry_knowledge": 3.0303030303030303
+          },
+          "scoring_method": "batch_comparative"
+        },
+        "resume_path": "documents/final4resume.pdf",
+        "job_description_path": "documents/Bottomline_ Intern + FTE - JD 2026 Batch.pdf",
+        "slm_metadata": {
+          "resume_path": "documents/final4resume.pdf",
+          "job_description_path": "documents/Bottomline_ Intern + FTE - JD 2026 Batch.pdf",
+          "criteria_requirements": {
+            "technical_skills": 60,
+            "experience": 60,
+            "education": 15,
+            "presentation": 10,
+            "certifications": 5,
+            "projects": 5,
+            "soft_skills": 5,
+            "industry_knowledge": 5
+          },
+          "normalized_weights": {
+            "technical_skills": 36.36363636363637,
+            "experience": 36.36363636363637,
+            "education": 9.090909090909092,
+            "presentation": 6.0606060606060606,
+            "certifications": 3.0303030303030303,
+            "projects": 3.0303030303030303,
+            "soft_skills": 3.0303030303030303,
+            "industry_knowledge": 3.0303030303030303
+          },
+          "scoring_method": "nlp_slm"
+        }
       },
       "gap_analysis": {
         "missing_skills": [],

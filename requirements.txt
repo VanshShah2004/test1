@@ -9,8 +9,18 @@ langchain-google-genai>=1.0.0
 # PDF processing
 PyPDF2>=3.0.0
 
+# NLP dependencies (for SLM/NLP-based extraction)
+python-dateutil>=2.8.0
+regex>=2023.0.0
+
+# ML dependencies (for training SLM models)
+scikit-learn>=1.3.0
+
 # Dashboard dependencies (optional - only needed for dashboard.py)
 pandas>=2.0.0
 plotly>=5.0.0
 streamlit>=1.28.0
+
+# Kaggle dataset (optional - for training)
+kagglehub>=0.2.0
 

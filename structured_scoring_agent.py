@@ -495,14 +495,28 @@ CRITICAL:
         output.append(f"\n📊 INDIVIDUAL SCORES:")
         total_contribution = 0
         for criterion, data in scoring.items():
-            if criterion == "total_score" or criterion == "metadata":
+            # Skip non-criterion fields
+            if criterion in ["total_score", "metadata", "llm_total", "slm_total"]:
+                continue
+            
+            # Handle both dict format (dual-model) and other formats
+            if not isinstance(data, dict):
                 continue
             
             raw_score = data.get("raw_score", 0)
             weighted_contribution = data.get("weighted_contribution", 0)
             total_contribution += weighted_contribution
             
-            output.append(f"  • {criterion}: {raw_score}/100 → {weighted_contribution:.1f} points")
+            # Show LLM/SLM breakdown if available (dual-model)
+            llm_score = data.get("llm_score")
+            slm_score = data.get("slm_score")
+            if llm_score is not None and slm_score is not None:
+                discrepancy = data.get("discrepancy", 0)
+                flagged = data.get("flagged", False)
+                flag_marker = " ⚠️" if flagged else ""
+                output.append(f"  • {criterion}: {raw_score}/100 → {weighted_contribution:.1f} points (LLM: {llm_score}, SLM: {slm_score}, Δ: {discrepancy}){flag_marker}")
+            else:
+                output.append(f"  • {criterion}: {raw_score}/100 → {weighted_contribution:.1f} points")
         
         # Show total score
         total_score = scoring.get("total_score", total_contribution)
@@ -511,7 +525,18 @@ CRITICAL:
         # Show breakdown
         output.append(f"\n📈 SCORE BREAKDOWN:")
         output.append(f"  • Sum of weighted contributions: {total_contribution:.1f}")
-        output.append(f"  • LLM calculated total: {total_score:.1f}")
+        output.append(f"  • Calculated total: {total_score:.1f}")
+        
+        # Show LLM/SLM totals if available (dual-model)
+        llm_total = scoring.get("llm_total")
+        slm_total = scoring.get("slm_total")
+        if llm_total is not None and slm_total is not None:
+            metadata = scoring.get("metadata", {})
+            llm_weight = metadata.get("llm_weight", 0.65)
+            slm_weight = metadata.get("slm_weight", 0.35)
+            output.append(f"  • LLM total: {llm_total:.1f} (weight: {llm_weight:.0%})")
+            output.append(f"  • SLM total: {slm_total:.1f} (weight: {slm_weight:.0%})")
+            output.append(f"  • Consensus: {total_score:.1f} (weighted average)")
         
         return "\n".join(output)
 
