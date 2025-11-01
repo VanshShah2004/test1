@@ -13,8 +13,25 @@ class MatchmakerAgent:
         else:
             skill_match = 50
 
-        # Experience heuristic (no parsed years yet)
-        exp_match = 60 if job.min_experience_years <= 0 else 40
+        # Experience matching based on parsed years
+        resume_exp = resume.total_experience_years or 0.0
+        job_required_exp = job.min_experience_years or 0
+        
+        if job_required_exp <= 0:
+            # Job doesn't require experience (e.g., internship/entry-level)
+            exp_match = 100
+        elif resume_exp >= job_required_exp:
+            # Candidate meets or exceeds requirement
+            exp_match = 100
+        elif resume_exp > 0:
+            # Candidate has some experience but less than required
+            # Score based on percentage: 40-90 range
+            percentage = resume_exp / job_required_exp
+            exp_match = int(40 + (percentage * 50))  # 40-90 range
+            exp_match = min(90, max(40, exp_match))  # Clamp between 40-90
+        else:
+            # Candidate has no experience but job requires some
+            exp_match = 30
 
         # Education
         order = {"high_school": 0, "bachelors": 1, "masters": 2, "doctorate": 3}
