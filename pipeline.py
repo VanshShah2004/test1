@@ -9,7 +9,7 @@ from typing import Dict, List, Any
 from main_orchestrator import run as orchestrate
 from structured_scoring_agent import StructuredScoringAgent
 from datetime import datetime
-
+import time
 
 def _ensure_output_dir(path: str = "outputs") -> str:
     """Ensure outputs directory exists and return its path."""
