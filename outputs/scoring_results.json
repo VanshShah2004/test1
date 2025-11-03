@@ -12,13 +12,13 @@
         "discrepancy": 12.0
       },
       "experience": {
-        "raw_score": 62.2,
+        "raw_score": 60.3,
         "weight_given": 60,
         "normalized_percentage": 36.4,
-        "weighted_contribution": 22.64,
-        "llm_score": 85,
+        "weighted_contribution": 21.95,
+        "llm_score": 82,
         "slm_score": 20.0,
-        "discrepancy": 65.0
+        "discrepancy": 62.0
       },
       "education": {
         "raw_score": 93.5,
@@ -30,22 +30,22 @@
         "discrepancy": 10.0
       },
       "presentation": {
-        "raw_score": 83.5,
+        "raw_score": 86.8,
         "weight_given": 10,
         "normalized_percentage": 6.1,
-        "weighted_contribution": 5.08,
-        "llm_score": 80,
+        "weighted_contribution": 5.28,
+        "llm_score": 85,
         "slm_score": 90.0,
-        "discrepancy": 10.0
+        "discrepancy": 5.0
       },
       "certifications": {
-        "raw_score": 76.8,
+        "raw_score": 80.0,
         "weight_given": 5,
         "normalized_percentage": 3.0,
-        "weighted_contribution": 2.31,
-        "llm_score": 75,
+        "weighted_contribution": 2.41,
+        "llm_score": 80,
         "slm_score": 80.0,
-        "discrepancy": 5.0
+        "discrepancy": 0.0
       },
       "projects": {
         "raw_score": 76.5,
@@ -66,15 +66,15 @@
         "discrepancy": 15.0
       },
       "industry_knowledge": {
-        "raw_score": 48.9,
+        "raw_score": 52.2,
         "weight_given": 5,
         "normalized_percentage": 3.0,
-        "weighted_contribution": 1.47,
-        "llm_score": 70,
+        "weighted_contribution": 1.57,
+        "llm_score": 75,
         "slm_score": 9.8,
-        "discrepancy": 60.2
+        "discrepancy": 65.2
       },
-      "total_score": 78.6,
+      "total_score": 78.3,
       "metadata": {
         "resume_path": "documents/final5resume.pdf",
         "job_description_path": "documents/Bottomline_ Intern + FTE - JD 2026 Batch.pdf",
@@ -101,9 +101,9 @@
         "scoring_method": "hybrid_llm_slm",
         "llm_weight": 0.65,
         "slm_weight": 0.35,
-        "llm_total_score": 85.31,
+        "llm_total_score": 84.86,
         "slm_total_score": 66.1,
-        "hybrid_total_score": 78.6
+        "hybrid_total_score": 78.3
       },
       "gap_analysis": {
         "missing_skills": [],
@@ -128,35 +128,35 @@
         "raw_score": 81.6,
         "weight_given": 60,
         "normalized_percentage": 36.4,
-        "weighted_contribution": 29.71,
+        "weighted_contribution": 29.68,
         "llm_score": 92,
         "slm_score": 62.4,
         "discrepancy": 29.6
       },
       "education": {
-        "raw_score": 96.8,
+        "raw_score": 94.8,
         "weight_given": 15,
         "normalized_percentage": 9.1,
-        "weighted_contribution": 8.8,
-        "llm_score": 95,
+        "weighted_contribution": 8.62,
+        "llm_score": 92,
         "slm_score": 100.0,
-        "discrepancy": 5.0
+        "discrepancy": 8.0
       },
       "presentation": {
-        "raw_score": 86.8,
+        "raw_score": 90.0,
         "weight_given": 10,
         "normalized_percentage": 6.1,
-        "weighted_contribution": 5.28,
-        "llm_score": 85,
+        "weighted_contribution": 5.48,
+        "llm_score": 90,
         "slm_score": 90.0,
-        "discrepancy": 5.0
+        "discrepancy": 0.0
       },
       "certifications": {
-        "raw_score": 43.5,
+        "raw_score": 56.5,
         "weight_given": 5,
         "normalized_percentage": 3.0,
-        "weighted_contribution": 1.31,
-        "llm_score": 40,
+        "weighted_contribution": 1.7,
+        "llm_score": 60,
         "slm_score": 50.0,
         "discrepancy": 10.0
       },
@@ -179,15 +179,15 @@
         "discrepancy": 65.0
       },
       "industry_knowledge": {
-        "raw_score": 54.0,
+        "raw_score": 57.2,
         "weight_given": 5,
         "normalized_percentage": 3.0,
-        "weighted_contribution": 1.62,
-        "llm_score": 80,
+        "weighted_contribution": 1.72,
+        "llm_score": 85,
         "slm_score": 5.7,
-        "discrepancy": 74.3
+        "discrepancy": 79.3
       },
-      "total_score": 77.1,
+      "total_score": 77.6,
       "metadata": {
         "resume_path": "documents/Nirmit_Jain_Resume_Final.pdf",
         "job_description_path": "documents/Bottomline_ Intern + FTE - JD 2026 Batch.pdf",
@@ -214,9 +214,9 @@
         "scoring_method": "hybrid_llm_slm",
         "llm_weight": 0.65,
         "slm_weight": 0.35,
-        "llm_total_score": 90.91,
+        "llm_total_score": 91.64,
         "slm_total_score": 51.5,
-        "hybrid_total_score": 77.1
+        "hybrid_total_score": 77.6
       },
       "gap_analysis": {
         "missing_skills": [],
@@ -232,75 +232,75 @@
         "raw_score": 91.6,
         "weight_given": 60,
         "normalized_percentage": 36.4,
-        "weighted_contribution": 33.27,
+        "weighted_contribution": 33.3,
         "llm_score": 87,
         "slm_score": 100.0,
         "discrepancy": 13.0
       },
       "experience": {
-        "raw_score": 61.6,
+        "raw_score": 59.0,
         "weight_given": 60,
         "normalized_percentage": 36.4,
-        "weighted_contribution": 22.37,
-        "llm_score": 84,
+        "weighted_contribution": 21.47,
+        "llm_score": 80,
         "slm_score": 20.0,
-        "discrepancy": 64.0
+        "discrepancy": 60.0
       },
       "education": {
-        "raw_score": 92.8,
+        "raw_score": 92.2,
         "weight_given": 15,
         "normalized_percentage": 9.1,
-        "weighted_contribution": 8.44,
-        "llm_score": 89,
+        "weighted_contribution": 8.39,
+        "llm_score": 88,
         "slm_score": 100.0,
-        "discrepancy": 11.0
+        "discrepancy": 12.0
       },
       "presentation": {
-        "raw_score": 82.8,
+        "raw_score": 83.5,
         "weight_given": 10,
         "normalized_percentage": 6.1,
-        "weighted_contribution": 5.04,
-        "llm_score": 79,
+        "weighted_contribution": 5.08,
+        "llm_score": 80,
         "slm_score": 90.0,
-        "discrepancy": 11.0
+        "discrepancy": 10.0
       },
       "certifications": {
-        "raw_score": 76.1,
+        "raw_score": 76.8,
         "weight_given": 5,
         "normalized_percentage": 3.0,
-        "weighted_contribution": 2.29,
-        "llm_score": 74,
+        "weighted_contribution": 2.31,
+        "llm_score": 75,
         "slm_score": 80.0,
-        "discrepancy": 6.0
+        "discrepancy": 5.0
       },
       "projects": {
-        "raw_score": 75.8,
+        "raw_score": 73.2,
         "weight_given": 5,
         "normalized_percentage": 3.0,
-        "weighted_contribution": 2.28,
-        "llm_score": 79,
+        "weighted_contribution": 2.2,
+        "llm_score": 75,
         "slm_score": 70.0,
-        "discrepancy": 9.0
+        "discrepancy": 5.0
       },
       "soft_skills": {
-        "raw_score": 89.6,
+        "raw_score": 87.0,
         "weight_given": 5,
         "normalized_percentage": 3.0,
-        "weighted_contribution": 2.7,
-        "llm_score": 84,
+        "weighted_contribution": 2.62,
+        "llm_score": 80,
         "slm_score": 100.0,
-        "discrepancy": 16.0
+        "discrepancy": 20.0
       },
       "industry_knowledge": {
-        "raw_score": 48.4,
+        "raw_score": 49.1,
         "weight_given": 5,
         "normalized_percentage": 3.0,
-        "weighted_contribution": 1.45,
-        "llm_score": 69,
+        "weighted_contribution": 1.47,
+        "llm_score": 70,
         "slm_score": 10.2,
-        "discrepancy": 58.8
+        "discrepancy": 59.8
       },
-      "total_score": 77.8,
+      "total_score": 76.9,
       "metadata": {
         "resume_path": "documents/final4resume.pdf",
         "job_description_path": "documents/Bottomline_ Intern + FTE - JD 2026 Batch.pdf",
@@ -327,9 +327,9 @@
         "scoring_method": "hybrid_llm_slm",
         "llm_weight": 0.65,
         "slm_weight": 0.35,
-        "llm_total_score": 84.2,
+        "llm_total_score": 82.67,
         "slm_total_score": 66.1,
-        "hybrid_total_score": 77.8
+        "hybrid_total_score": 76.9
       },
       "gap_analysis": {
         "missing_skills": [],

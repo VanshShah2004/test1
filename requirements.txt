@@ -16,6 +16,16 @@ python-dateutil>=2.8.0
 scikit-learn>=1.3.0
 numpy>=1.24.0
 
+# Transformer models and training (for SLM training)
+transformers>=4.30.0
+torch>=2.0.0
+datasets>=2.14.0
+accelerate>=0.20.0
+
+# Optional: Only needed if using TensorFlow models (we use PyTorch)
+# tensorflow>=2.13.0
+# tf-keras  # Only if needed for TensorFlow models
+
 # Dashboard dependencies (optional - only needed for dashboard.py)
 pandas>=2.0.0
 plotly>=5.0.0
