@@ -10,7 +10,7 @@ import sys
 from typing import Dict, List, Any
 from main_orchestrator import run as orchestrate
 from structured_scoring_agent import StructuredScoringAgent
-from agents.dual_model_scoring_service import DualModelScoringService
+from agents.hybrid_scoring_agent import HybridScoringAgent
 from datetime import datetime
 
 # Fix Windows console encoding for emoji/unicode output
@@ -34,19 +34,39 @@ def _flatten_scoring_result(scoring_result: Dict[str, Any]) -> Dict[str, Any]:
     flat["resume_path"] = metadata.get("resume_path", "")
     flat["job_description_path"] = metadata.get("job_description_path", "")
     flat["total_score"] = scoring_result.get("total_score", 0)
+    
+    # Add hybrid scoring metadata
+    flat["scoring_method"] = metadata.get("scoring_method", "unknown")
+    flat["llm_weight"] = metadata.get("llm_weight", None)
+    flat["slm_weight"] = metadata.get("slm_weight", None)
+    flat["llm_total_score"] = metadata.get("llm_total_score", None)
+    flat["slm_total_score"] = metadata.get("slm_total_score", None)
+    flat["hybrid_total_score"] = metadata.get("hybrid_total_score", None)
 
     # Per-criterion fields
     for criterion, data in scoring_result.items():
-        if criterion in ("total_score", "metadata"):
+        if criterion in ("total_score", "metadata", "gap_analysis"):
             continue
-        raw_score = data.get("raw_score", None)
-        weight_given = data.get("weight_given", None)
-        normalized_percentage = data.get("normalized_percentage", None)
-        weighted_contribution = data.get("weighted_contribution", None)
-        flat[f"{criterion}__raw_score"] = raw_score
-        flat[f"{criterion}__weight_given"] = weight_given
-        flat[f"{criterion}__normalized_percentage"] = normalized_percentage
-        flat[f"{criterion}__weighted_contribution"] = weighted_contribution
+        if isinstance(data, dict):
+            raw_score = data.get("raw_score", None)
+            weight_given = data.get("weight_given", None)
+            normalized_percentage = data.get("normalized_percentage", None)
+            weighted_contribution = data.get("weighted_contribution", None)
+            flat[f"{criterion}__raw_score"] = raw_score
+            flat[f"{criterion}__weight_given"] = weight_given
+            flat[f"{criterion}__normalized_percentage"] = normalized_percentage
+            flat[f"{criterion}__weighted_contribution"] = weighted_contribution
+            
+            # Add LLM and SLM scores if available (hybrid scoring)
+            llm_score = data.get("llm_score", None)
+            slm_score = data.get("slm_score", None)
+            discrepancy = data.get("discrepancy", None)
+            if llm_score is not None:
+                flat[f"{criterion}__llm_score"] = llm_score
+            if slm_score is not None:
+                flat[f"{criterion}__slm_score"] = slm_score
+            if discrepancy is not None:
+                flat[f"{criterion}__discrepancy"] = discrepancy
 
     # Optional gap analysis if present
     gap = scoring_result.get("gap_analysis", {})
@@ -105,9 +125,9 @@ def run_pipeline(job_pdf: str, resume_pdfs: List[str],
         print(f"⚠️  Orchestrator flow failed: {e}")
         orchestrate_results = []
     
-    # Step 2: Run structured scoring
+    # Step 2: Run HYBRID scoring (LLM + SLM)
     print("\n" + "=" * 70)
-    print("STRUCTURED SCORING ANALYSIS")
+    print("HYBRID SCORING ANALYSIS (LLM + SLM)")
     print("=" * 70)
     
     # Load criteria if not provided
@@ -124,10 +144,8 @@ def run_pipeline(job_pdf: str, resume_pdfs: List[str],
                 "marketability": 10
             }
     
-    # Initialize dual-model scoring service (LLM + SLM consensus)
-    dual_scorer = DualModelScoringService()
-    # Keep StructuredScoringAgent for formatting results
-    formatting_agent = StructuredScoringAgent()
+    # Initialize HYBRID scoring agent (LLM + SLM)
+    agent = HybridScoringAgent()
     
     # Show criteria summary
     total_weight = sum(criteria_requirements.values())
@@ -151,16 +169,20 @@ def run_pipeline(job_pdf: str, resume_pdfs: List[str],
     except Exception:
         pass
 
-    # Use dual-model scoring (LLM + SLM consensus)
+    # Use HYBRID batch scoring (LLM + SLM with weighted consensus)
     print("*" * 70)
-    print(f"DUAL-MODEL SCORING: Processing {len(resume_pdfs)} resumes")
+    print(f"HYBRID SCORING: LLM (Gemini) + SLM (NLP-based)")
+    print(f"Processing {len(resume_pdfs)} resumes together")
     print("*" * 70)
-    print("📊 Using LLM (65%) + SLM (35%) consensus with automatic fallback")
-    print("   LLM: Complex reasoning | SLM: Deterministic, rule-based")
+    print("📊 Hybrid approach combines:")
+    print("   • LLM (65% weight): Nuanced, context-aware evaluation")
+    print("   • SLM (35% weight): Deterministic, rule-based scoring")
+    print("   • Automatic fallback to 100% SLM if LLM fails")
     print()
     
-    # Score all resumes using dual-model approach (batch processing)
-    results = dual_scorer.score_resumes_batch(
+    # Score all resumes together using HYBRID batch method
+    # Process: 1) Score all with LLM, 2) Score all with SLM, 3) Calculate weighted mean
+    results = agent.score_resumes_batch(
         resume_paths=resume_pdfs,
         job_description_path=job_pdf,
         criteria_requirements=criteria_requirements
@@ -208,30 +230,41 @@ def run_pipeline(job_pdf: str, resume_pdfs: List[str],
         except Exception:
             pass
 
-        # Display results (use formatting_agent for display, or create custom formatter)
-        # For dual-model results, we need a custom formatter or adapt the existing one
-        if result.get("success"):
-            scoring = result["scoring_result"]
-            metadata = scoring.get("metadata", {})
+        # Display results
+        print(agent.format_results(result))
+    
+    # Display SLM Metrics Summary (before final ranking)
+    print("\n" + "=" * 70)
+    print("SLM PERFORMANCE METRICS")
+    print("=" * 70)
+    
+    # Try to get and display SLM metrics
+    try:
+        if hasattr(agent, 'calculate_and_display_slm_metrics'):
+            slm_metrics = agent.calculate_and_display_slm_metrics()
             
-            # Check if it's dual-model or fallback
-            scoring_method = metadata.get("scoring_method", "unknown")
-            use_fallback = metadata.get("use_fallback", False)
-            
-            if use_fallback:
-                print("⚠️  FALLBACK MODE: Using 100% SLM (LLM unavailable)")
-            elif scoring_method == "dual_model_consensus":
-                print("✅ DUAL-MODEL MODE: LLM + SLM consensus")
-            
-            # Use existing formatter (it will work for the scoring_result structure)
-            # Create a compatible format
-            compatible_result = {
-                "success": True,
-                "scoring_result": scoring
-            }
-            print(formatting_agent.format_results(compatible_result))
-        else:
-            print(f"❌ Error: {result.get('error', 'Unknown error')}")
+            # If no matches found, show SLM-only statistics
+            if slm_metrics and slm_metrics.get("matched_samples", 0) == 0:
+                print("\n📊 SLM SCORING STATISTICS (No Ground Truth Matches):")
+                slm_scores_only = []
+                for result in results:
+                    if result.get("success"):
+                        metadata = result.get("scoring_result", {}).get("metadata", {})
+                        slm_score = metadata.get("slm_total_score")
+                        if slm_score is not None:
+                            slm_scores_only.append(slm_score)
+                
+                if slm_scores_only:
+                    import numpy as np
+                    print(f"  • Number of resumes scored: {len(slm_scores_only)}")
+                    print(f"  • Mean SLM Score: {np.mean(slm_scores_only):.2f}/100")
+                    print(f"  • Min SLM Score: {np.min(slm_scores_only):.2f}/100")
+                    print(f"  • Max SLM Score: {np.max(slm_scores_only):.2f}/100")
+                    print(f"  • Std Deviation: {np.std(slm_scores_only):.2f}")
+                    print(f"\n  💡 For accuracy/precision metrics, resumes need to match")
+                    print(f"     records in kaggle_dataset/hf_clean_data/resume_score_details.jsonl")
+    except Exception as e:
+        print(f"  ⚠️  Could not display SLM metrics: {e}")
     
     # Final ranking
     print("\n" + "=" * 70)
@@ -244,9 +277,7 @@ def run_pipeline(job_pdf: str, resume_pdfs: List[str],
         if result.get("success"):
             scoring = result["scoring_result"]
             total_score = scoring.get("total_score", 0)
-            metadata = scoring.get("metadata", {})
-            # Get resume path from metadata (might be in different locations)
-            resume_path = metadata.get("resume_path") or result.get("resume_path") or resume_pdfs[i]
+            resume_path = result["scoring_result"]["metadata"]["resume_path"]
             ranked_results.append((resume_path, total_score))
         else:
             ranked_results.append((resume_pdfs[i], 0))
