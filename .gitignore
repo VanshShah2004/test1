@@ -41,5 +41,8 @@ outputs/
 # Keep specific JSON files that are needed
 !criteria_requirements.json
 
+# Dataset directory (large files)
+kaggle_dataset/
+
 # Documentation
 docs/_build/
